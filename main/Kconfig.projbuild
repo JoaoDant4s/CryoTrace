@@ -1,0 +1,81 @@
+menu "CryoTrace"
+
+    config CRYO_BOX_ID
+        string "Thermal box ID"
+        default "box01"
+        help
+            Used in the MQTT topic: coldchain/{box_id}/...
+
+    config CRYO_BATCH_ID
+        string "Vaccine batch ID"
+        default "batch-demo-001"
+
+    config CRYO_TEMP_MIN_DECI
+        int "Range lower limit (tenths of °C)"
+        range -1000 1000
+        default 20
+        help
+            20 = 2.0 °C. The usual range for refrigerated vaccines is 2–8 °C.
+
+    config CRYO_TEMP_MAX_DECI
+        int "Range upper limit (tenths of °C)"
+        range -1000 1000
+        default 80
+        help
+            80 = 8.0 °C.
+
+    config CRYO_ENTER_TIME_MS
+        int "Time out of range to enter ANOMALY (ms)"
+        range 0 3600000
+        default 3000
+
+    config CRYO_EXIT_TIME_MS
+        int "Time back in range to return to NORMAL (ms)"
+        range 0 3600000
+        default 3000
+
+    config CRYO_SAMPLE_PERIOD_MS
+        int "Sensor sampling period (ms)"
+        range 50 60000
+        default 500
+        help
+            Must be much smaller than the enter and exit times: the state
+            change happens between T and T + period after the start.
+
+    config CRYO_FILTER_WINDOW
+        int "Moving average window (samples)"
+        range 1 16
+        default 4
+
+    config CRYO_TELEMETRY_PERIOD_S
+        int "Telemetry publish period (s)"
+        range 1 3600
+        default 10
+
+    choice CRYO_SENSOR
+        prompt "Temperature sensor"
+        default CRYO_SENSOR_SIMULATED
+
+        config CRYO_SENSOR_SIMULATED
+            bool "Simulated (test profile, no hardware)"
+    endchoice
+
+endmenu
+
+menu "CryoTrace - Network"
+
+    config CRYO_WIFI_SSID
+        string "Wi-Fi SSID"
+        default ""
+        help
+            Empty = run without network. Stored in sdkconfig, which is in .gitignore.
+
+    config CRYO_WIFI_PASSWORD
+        string "Wi-Fi password"
+        default ""
+
+    config CRYO_NTP_SERVER
+        string "NTP server"
+        default "pool.ntp.org"
+
+endmenu
