@@ -1,0 +1,9 @@
+# Foundry build output
+cache/
+out/
+
+# Dependencies, reinstalled with the commands in README.md
+lib/
+
+broadcast/*/31337/
+.env
