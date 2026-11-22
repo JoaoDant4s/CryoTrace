@@ -178,7 +178,7 @@ menu "CryoTrace - Blockchain"
 
     config CRYO_CONTRACT_ADDRESS
         string "CryoTrace contract address"
-        default ""
+        default "0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4"
         help
             0x-prefixed address of the deployed contract. Part of the EIP-712
             domain: a signature is only valid for this contract.

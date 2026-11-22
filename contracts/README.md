@@ -43,9 +43,16 @@ forge test --gas-report  # gas per function
    roles (set `PROVISIONER` / `LOGISTICS` to give them to other addresses):
 
    ```sh
-   forge script script/Deploy.s.sol --rpc-url sepolia --account cryotrace-deployer --broadcast
+   forge script script/Deploy.s.sol --rpc-url sepolia --account cryotrace-deployer \
+     --broadcast --slow --gas-estimate-multiplier 800
    # add --verify (with ETHERSCAN_API_KEY set) to publish the source on Etherscan
    ```
+
+   Why the multiplier: Foundry estimates gas with its local EVM, but Sepolia
+   currently charges far more for contract creation and storage (deploy: ~1.5M
+   gas locally, ~10.2M on Sepolia). With the default 1.3x margin the deploy runs
+   out of gas. Unused gas is not charged; `--slow` sends each transaction only
+   after the previous one is mined.
 
    The address is printed and saved in `broadcast/Deploy.s.sol/11155111/run-latest.json`.
    Put it in `CONTRACT_ADDRESS` (here, in the relayer's `.env` and in the firmware's
@@ -57,8 +64,17 @@ forge test --gas-report  # gas per function
    Already-done steps are skipped, so it is safe to rerun:
 
    ```sh
-   forge script script/Provision.s.sol --rpc-url sepolia --account cryotrace-deployer --broadcast
+   forge script script/Provision.s.sol --rpc-url sepolia --account cryotrace-deployer \
+     --broadcast --slow --gas-estimate-multiplier 800
    ```
+
+### Current deployment
+
+| | |
+|---|---|
+| Network | Sepolia (chain id 11155111) |
+| CryoTrace | [`0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4`](https://sepolia.etherscan.io/address/0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4) |
+| Deploy tx | [`0x95cf9ab1…a91949`](https://sepolia.etherscan.io/tx/0x95cf9ab1375a7f58fa02e8519754cdac8fcb8e062ad76670d2620925a0a91949) (block 12190943, 10,227,529 gas) |
 
 ## Signed event (EIP-712)
 

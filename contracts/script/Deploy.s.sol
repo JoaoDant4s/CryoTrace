@@ -11,7 +11,8 @@ import {CryoTrace} from "../src/CryoTrace.sol";
 contract Deploy is Script {
     function run() external returns (CryoTrace cryo) {
         vm.startBroadcast();
-        address deployer = msg.sender;
+        // The broadcasting wallet: msg.sender is not set to it when using --account.
+        (, address deployer,) = vm.readCallers();
         address provisioner = vm.envOr("PROVISIONER", deployer);
         address logistics = vm.envOr("LOGISTICS", deployer);
 
