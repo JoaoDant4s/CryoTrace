@@ -184,3 +184,58 @@ def test_does_not_spend_gas_on_rejection(chain, relayer):
     ev["peak"] = 0
     assert relayer.handle(TOPIC, _payload(ev, signature)).outcome is Outcome.REJECTED
     assert w3.eth.get_transaction_count(relayer_address) == nonce_before
+
+
+# ---- several relayers (censorship resistance) ----
+
+# anvil's default funded account #2, a second relayer with its own wallet
+BACKUP_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
+
+
+def _nonce(w3, key: str) -> int:
+    return w3.eth.get_transaction_count(Account.from_key(key).address)
+
+
+def test_second_relayer_skips_recorded_event(chain, relayer):
+    w3, cryo = chain
+    backup = Relayer(ChainClient(w3, cryo.address, load_abi(), BACKUP_KEY))
+    ev = _event(10)
+    payload = _payload(ev, _sign(w3, cryo, ev))
+
+    assert relayer.handle(TOPIC, payload).outcome is Outcome.RECORDED
+    nonce_before = _nonce(w3, BACKUP_KEY)
+    assert backup.handle(TOPIC, payload).outcome is Outcome.DUPLICATE
+    assert _nonce(w3, BACKUP_KEY) == nonce_before  # no gas spent
+
+
+def test_lost_race_counts_as_duplicate(chain, relayer, monkeypatch):
+    """The backup checked before the primary's transaction was mined."""
+    w3, cryo = chain
+    backup = Relayer(ChainClient(w3, cryo.address, load_abi(), BACKUP_KEY))
+    ev = _event(11)
+    payload = _payload(ev, _sign(w3, cryo, ev))
+    assert relayer.handle(TOPIC, payload).outcome is Outcome.RECORDED
+
+    real = backup.chain.is_recorded
+    calls = []
+
+    def first_check_is_stale(signed):
+        calls.append(signed)
+        return False if len(calls) == 1 else real(signed)
+
+    monkeypatch.setattr(backup.chain, "is_recorded", first_check_is_stale)
+    result = backup.handle(TOPIC, payload)
+    assert result.outcome is Outcome.DUPLICATE
+    assert "another relayer" in result.detail
+
+
+def test_backup_relayer_waits_then_submits(chain):
+    w3, cryo = chain
+    waits = []
+    backup = Relayer(ChainClient(w3, cryo.address, load_abi(), BACKUP_KEY),
+                     submit_delay_s=30, sleep=waits.append)
+    ev = _event(12)
+    # The primary never forwarded this event (e.g. censored): the backup records it.
+    result = backup.handle(TOPIC, _payload(ev, _sign(w3, cryo, ev)))
+    assert waits == [30]
+    assert result.outcome is Outcome.RECORDED

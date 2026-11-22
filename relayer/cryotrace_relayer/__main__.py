@@ -56,9 +56,10 @@ def main() -> None:
         load_abi(Path(env("CONTRACT_ABI", str(DEFAULT_ABI_PATH)))),
         env("RELAYER_PRIVATE_KEY"),
     )
-    relayer = Relayer(chain)
+    relayer = Relayer(chain, submit_delay_s=float(env("SUBMIT_DELAY_S", "0")))
     topic = env("MQTT_TOPIC", "coldchain/+/anomaly")
-    log.info("relayer account %s, contract %s", chain.account.address, chain.contract.address)
+    log.info("relayer account %s, contract %s, submit delay %.0f s", chain.account.address,
+             chain.contract.address, relayer.submit_delay_s)
 
     # Persistent session + manual ack: a message is only acknowledged after it
     # reaches a final outcome, so a crash mid-way makes the broker redeliver it.
