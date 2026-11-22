@@ -71,6 +71,7 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | Device key generated on-chip + persistent counter (NVS) | ✅ builds; still to be validated on the board |
 | MQTT publishing over TLS (HiveMQ Cloud) | ⏳ |
 | Python relayer | ✅ tested end to end against a local chain (anvil) |
+| Deploy and provisioning scripts (Foundry) | ✅ tested on a local chain |
 | Testnet deployment (Sepolia) and end-to-end test | ⏳ |
 | Physical sensor / hardware simulation | ⏳ (last) |
 | Telegraf → InfluxDB → Grafana | out of scope |
