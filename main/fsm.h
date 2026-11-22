@@ -21,8 +21,8 @@ typedef enum {
 
 // Same values as the `tipo` field in the smart contract.
 typedef enum {
-    ANOMALY_ABOVE = 0,
-    ANOMALY_BELOW = 1,
+    ANOMALY_BELOW = 0,
+    ANOMALY_ABOVE = 1,
     ANOMALY_SENSOR_OFFLINE = 2,
 } anomaly_type_t;
 

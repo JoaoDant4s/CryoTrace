@@ -49,7 +49,7 @@ contract CryoTraceTest is Test {
             boxId: BOX,
             batchId: BATCH,
             kind: 0,
-            anomalyType: 0, // ABOVE
+            anomalyType: 1, // ABOVE
             startTime: 1_767_225_600_000,
             endTime: 0,
             temperature: 812, // 8.12 C
@@ -103,7 +103,7 @@ contract CryoTraceTest is Test {
 
         vm.expectEmit(true, true, false, true, address(cryo));
         emit CryoTrace.EventRecorded(
-            BATCH, BOX, 0, 0, ev.startTime, 0, 812, 845, 1, cryo.hashEvent(ev)
+            BATCH, BOX, 0, 1, ev.startTime, 0, 812, 845, 1, cryo.hashEvent(ev)
         );
         cryo.recordEvent(ev, sig);
     }

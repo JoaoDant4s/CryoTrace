@@ -29,13 +29,13 @@ static const char DEVICE_ADDRESS_HEX[] = "f5a5e415061470a8b9137959180901aea72450
 static const char DOMAIN_SEPARATOR_HEX[] =
     "c992022eeeb889ba26d944cc6ae914837890e626fcbd65e34cdbe4ffec5819af";
 static const char STRUCT_HASH_HEX[] =
-    "95a9a094ed9c095c376195e94b94ae345be0543471402b87b494aee2c0d6b25e";
+    "e4a71dc55de5fea1f0fe51333bb5ad2082a781786798d9f9dd6337ab27279644";
 static const char DIGEST_HEX[] =
-    "95fdfcf15e4ac0df0da61984df9182661dba8190b0fdee6f2fa76f06ca2c320a";
+    "fe87e48fa206d1338445822589ef6bf432ecc32277dae7ae5b1454fd8e30e3b5";
 static const char SIGNATURE_HEX[] =
-    "028e9e5fa9cfadd4baa59be30fa4b0e04212925aef1f6826cff3e559c437b7db"
-    "1f172a209746ba8c7b51c0680424bd1d77f1f229b6441a0b671e23b6a5bafb7a"
-    "1b";
+    "08a7c85b3031fc6059aec942042ef1e10e1bc7b17ecf9fa752a3a1fc44c74cb5"
+    "5a2f3eca400efae2f3591feba1e1aad4e5dcd42b02381dad3d2a12883133eee8"
+    "1c";
 
 static void from_hex(const char *hex, uint8_t *out, size_t len)
 {
@@ -58,7 +58,7 @@ static signed_event_t vector_event(void)
 {
     signed_event_t ev = {
         .kind = SIGNED_EVENT_KIND_RECOVERY,
-        .anomaly_type = 0, // ABOVE
+        .anomaly_type = 1, // ABOVE
         .start_time_ms = 1767225600000ULL,
         .end_time_ms = 1767225615000ULL,
         .temperature = 790,
@@ -262,10 +262,10 @@ static void test_payload_json(void)
     const char *expected =
         "{\"boxId\":\"0x8c4dae34670896d924ca9ac8cfde3453f494e0165196f54ab7e9b47322ff8dbb\","
         "\"batchId\":\"0x36c5cfd13ef95136a333b8467f27e5810f10588f87c862682a58cbe406b12fad\","
-        "\"kind\":1,\"anomalyType\":0,\"startTime\":1767225600000,\"endTime\":1767225615000,"
+        "\"kind\":1,\"anomalyType\":1,\"startTime\":1767225600000,\"endTime\":1767225615000,"
         "\"temperature\":790,\"peak\":1121,\"counter\":42,"
-        "\"signature\":\"0x028e9e5fa9cfadd4baa59be30fa4b0e04212925aef1f6826cff3e559c437b7db"
-        "1f172a209746ba8c7b51c0680424bd1d77f1f229b6441a0b671e23b6a5bafb7a1b\"}";
+        "\"signature\":\"0x08a7c85b3031fc6059aec942042ef1e10e1bc7b17ecf9fa752a3a1fc44c74cb5"
+        "5a2f3eca400efae2f3591feba1e1aad4e5dcd42b02381dad3d2a12883133eee81c\"}";
     CHECK(n == (int)strlen(expected));
     CHECK(strcmp(buf, expected) == 0);
 

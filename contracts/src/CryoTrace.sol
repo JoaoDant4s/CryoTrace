@@ -18,7 +18,7 @@ contract CryoTrace is AccessControl, EIP712 {
 
     uint8 public constant KIND_ANOMALY = 0;
     uint8 public constant KIND_RECOVERY = 1;
-    uint8 public constant MAX_ANOMALY_TYPE = 2; // ABOVE, BELOW, SENSOR_OFFLINE
+    uint8 public constant MAX_ANOMALY_TYPE = 2; // BELOW, ABOVE, SENSOR_OFFLINE
 
     /// @dev Must match the firmware byte for byte: any change here is a
     ///      breaking change to what the ESP32 signs.
@@ -31,7 +31,7 @@ contract CryoTrace is AccessControl, EIP712 {
         bytes32 boxId;       // keccak256 of the box id string, e.g. "box01"
         bytes32 batchId;     // keccak256 of the batch id string
         uint8 kind;          // KIND_ANOMALY or KIND_RECOVERY
-        uint8 anomalyType;   // 0 = ABOVE, 1 = BELOW, 2 = SENSOR_OFFLINE
+        uint8 anomalyType;   // 0 = BELOW, 1 = ABOVE, 2 = SENSOR_OFFLINE
         uint64 startTime;    // epoch ms of the first out-of-range reading (0 = clock not synced)
         uint64 endTime;      // epoch ms of the return to range (0 for KIND_ANOMALY)
         int16 temperature;   // centi-degrees C of the triggering reading (-32768 = no reading)

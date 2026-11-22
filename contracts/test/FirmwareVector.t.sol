@@ -32,7 +32,7 @@ contract FirmwareVectorTest is Test {
             boxId: keccak256("box01"),
             batchId: keccak256("batch-demo-001"),
             kind: 1, // RECOVERY
-            anomalyType: 0, // ABOVE
+            anomalyType: 1, // ABOVE
             startTime: 1_767_225_600_000,
             endTime: 1_767_225_615_000,
             temperature: 790,
@@ -44,8 +44,8 @@ contract FirmwareVectorTest is Test {
     /// Signature produced by the firmware code (main/signed_event.c) for the
     /// vector event, checked byte for byte in test/host/test_signed_event.c.
     bytes internal constant FIRMWARE_SIGNATURE =
-        hex"028e9e5fa9cfadd4baa59be30fa4b0e04212925aef1f6826cff3e559c437b7db"
-        hex"1f172a209746ba8c7b51c0680424bd1d77f1f229b6441a0b671e23b6a5bafb7a" hex"1b";
+        hex"08a7c85b3031fc6059aec942042ef1e10e1bc7b17ecf9fa752a3a1fc44c74cb5"
+        hex"5a2f3eca400efae2f3591feba1e1aad4e5dcd42b02381dad3d2a12883133eee8" hex"1c";
 
     function test_ContractAcceptsFirmwareSignature() public {
         cryo.recordEvent(_vectorEvent(), FIRMWARE_SIGNATURE);

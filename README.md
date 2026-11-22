@@ -67,9 +67,8 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | EIP-712 encoding + firmware signing | ✅ verified byte for byte against the contract |
 | FSM events signed and serialized as the MQTT payload | ✅ tested on the host |
 | Device key generated on-chip + persistent counter (NVS) | ✅ builds; still to be validated on the board |
-| NVS/flash encryption protecting the key | ⏳ |
 | MQTT publishing over TLS (HiveMQ Cloud) | ⏳ |
-| Python relayer | ⏳ |
+| Python relayer | ✅ tested end to end against a local chain (anvil) |
 | Testnet deployment (Sepolia) and end-to-end test | ⏳ |
 | Physical sensor / hardware simulation | ⏳ (last) |
 | Telegraf → InfluxDB → Grafana | out of scope |
@@ -92,6 +91,7 @@ contracts/                  Foundry project
   src/CryoTrace.sol         Smart contract
   test/                     Contract tests and the vector shared with the firmware
 test/host/                  Firmware tests in C, running on the PC (gcc)
+relayer/                    Python relayer: MQTT -> recordEvent (see relayer/README.md)
 ```
 
 ## Build and test
@@ -118,6 +118,19 @@ forge test               # all tests
 forge test --gas-report  # gas cost per function
 ```
 
+### Relayer
+
+Requires Python 3.10+; the end-to-end tests also need Foundry (`anvil`).
+
+```sh
+cd relayer
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+Configuration and how to run it against HiveMQ and Sepolia: [relayer/README.md](relayer/README.md).
+
 ### Firmware (ESP32-S3)
 
 Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/) v6.1.
@@ -140,9 +153,9 @@ On first boot the device generates its secp256k1 key from the hardware RNG, stor
 Each anomaly/recovery is published on `coldchain/{box_id}/anomaly` as:
 
 ```json
-{"boxId":"0x8c4d…","batchId":"0x36c5…","kind":1,"anomalyType":0,
+{"boxId":"0x8c4d…","batchId":"0x36c5…","kind":1,"anomalyType":1,
  "startTime":1767225600000,"endTime":1767225615000,"temperature":790,
- "peak":1121,"counter":42,"signature":"0x028e…1b"}
+ "peak":1121,"counter":42,"signature":"0x08a7…1c"}
 ```
 
 ## Signed event
@@ -156,7 +169,7 @@ ColdChainEvent(bytes32 boxId, bytes32 batchId, uint8 kind, uint8 anomalyType,
 ```
 
 - `kind`: 0 = anomaly start, 1 = recovery
-- `anomalyType`: 0 = above range, 1 = below range, 2 = no sensor reading
+- `anomalyType`: 0 = below range, 1 = above range, 2 = no sensor reading
 - times in epoch ms; temperatures in °C × 100
 - domain: name `CryoTrace`, version `1`, `chainId` and contract address (a signature is not valid on another network or contract)
 
