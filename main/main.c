@@ -63,7 +63,7 @@ static void publish_telemetry(float raw, float filtered, fsm_state_t state)
     temp_json(s_filtered, sizeof(s_filtered), filtered);
     snprintf(payload, sizeof(payload),
              "{\"ts\":%lld,\"temp\":%s,\"raw\":%s,\"state\":\"%s\"}",
-             to_epoch_ms(now_ms()), s_filtered, s_raw, fsm_state_name(state));
+             to_epoch_ms(now_ms()), s_filtered, s_raw, anomaly_fsm_state_name(state));
     ESP_LOGI(TAG, "coldchain/%s/telemetry %s", CONFIG_CRYO_BOX_ID, payload);
 }
 
@@ -98,7 +98,7 @@ static void publish_event(const fsm_event_t *ev)
     }
     ESP_LOGI(TAG, "%s %s (counter %lu), hash+sign took %lld us",
              ev->type == FSM_EVT_ANOMALY ? "ANOMALY" : "RECOVERY",
-             fsm_anomaly_name(ev->anomaly), (unsigned long)counter, sign_us);
+             anomaly_fsm_anomaly_name(ev->anomaly), (unsigned long)counter, sign_us);
     ESP_LOGW(TAG, "coldchain/%s/anomaly %s", CONFIG_CRYO_BOX_ID, payload);
 }
 
@@ -144,7 +144,7 @@ static void monitor_task(void *arg)
         .enter_time_ms = CONFIG_CRYO_ENTER_TIME_MS,
         .exit_time_ms = CONFIG_CRYO_EXIT_TIME_MS,
     };
-    fsm_init(&fsm, &cfg);
+    anomaly_fsm_init(&fsm, &cfg);
 
     ESP_LOGI(TAG, "range [%.1f, %.1f] °C, enter %lu ms, exit %lu ms, sample every %d ms",
              cfg.temp_min, cfg.temp_max, (unsigned long)cfg.enter_time_ms,
@@ -167,7 +167,7 @@ static void monitor_task(void *arg)
         ESP_LOGD(TAG, "raw=%.2f filtered=%.2f", raw, filtered);
 
         fsm_event_t ev;
-        if (fsm_process(&fsm, filtered, now_ms(), &ev)) {
+        if (anomaly_fsm_process(&fsm, filtered, now_ms(), &ev)) {
             publish_event(&ev);
         }
 

@@ -41,7 +41,7 @@ contract FirmwareVectorTest is Test {
         });
     }
 
-    /// Signature produced by the firmware code (main/signed_event.c) for the
+    /// Signature produced by the firmware code (main/signing/signed_event.c) for the
     /// vector event, checked byte for byte in test/host/test_signed_event.c.
     bytes internal constant FIRMWARE_SIGNATURE =
         hex"08a7c85b3031fc6059aec942042ef1e10e1bc7b17ecf9fa752a3a1fc44c74cb5"

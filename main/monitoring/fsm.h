@@ -58,11 +58,13 @@ typedef struct {
     float peak;
 } fsm_t;
 
-void fsm_init(fsm_t *fsm, const fsm_config_t *cfg);
+// The anomaly_fsm_ prefix avoids clashing with lwIP's PPP state machine
+// (fsm_init, ...), linked in when the cellular link is enabled.
+void anomaly_fsm_init(fsm_t *fsm, const fsm_config_t *cfg);
 
 // Processes one reading (NAN = sensor read failure) at now_ms.
 // Returns true and fills *event when the state changes.
-bool fsm_process(fsm_t *fsm, float temperature, int64_t now_ms, fsm_event_t *event);
+bool anomaly_fsm_process(fsm_t *fsm, float temperature, int64_t now_ms, fsm_event_t *event);
 
-const char *fsm_state_name(fsm_state_t state);
-const char *fsm_anomaly_name(anomaly_type_t type);
+const char *anomaly_fsm_state_name(fsm_state_t state);
+const char *anomaly_fsm_anomaly_name(anomaly_type_t type);

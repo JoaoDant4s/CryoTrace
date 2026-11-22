@@ -1,0 +1,8 @@
+dependencies:
+  idf:
+    version: '>=5.0'
+  # Cellular link only (menuconfig > CryoTrace - Network > Network link)
+  espressif/esp_modem:
+    version: ^1.4.0
+    rules:
+      - if: "$CONFIG{CRYO_NET_CELLULAR} == True"

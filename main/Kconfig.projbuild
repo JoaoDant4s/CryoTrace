@@ -64,15 +64,96 @@ endmenu
 
 menu "CryoTrace - Network"
 
-    config CRYO_WIFI_SSID
-        string "Wi-Fi SSID"
-        default ""
+    choice CRYO_NET
+        prompt "Network link"
+        default CRYO_NET_WIFI
         help
-            Empty = run without network. Stored in sdkconfig, which is in .gitignore.
+            The box connects on its own, without depending on the vehicle.
+            Cellular is the target design; Wi-Fi (e.g. a phone hotspot)
+            stands in for it in the prototype.
 
-    config CRYO_WIFI_PASSWORD
-        string "Wi-Fi password"
-        default ""
+        config CRYO_NET_WIFI
+            bool "Wi-Fi (prototype, e.g. phone hotspot)"
+
+        config CRYO_NET_CELLULAR
+            bool "Cellular modem: NB-IoT / LTE-M (SIMCom SIM7080G)"
+    endchoice
+
+    # esp_modem brings the modem up as a PPP interface.
+    config CRYO_NET_NEEDS_PPP
+        bool
+        default y if CRYO_NET_CELLULAR
+        select LWIP_PPP_SUPPORT
+
+    if CRYO_NET_WIFI
+
+        config CRYO_WIFI_SSID
+            string "Wi-Fi SSID"
+            default ""
+            help
+                Empty = run without network. Stored in sdkconfig, which is in .gitignore.
+
+        config CRYO_WIFI_PASSWORD
+            string "Wi-Fi password"
+            default ""
+
+    endif
+
+    if CRYO_NET_CELLULAR
+
+        choice CRYO_CELL_RAT
+            prompt "Radio technology"
+            default CRYO_CELL_RAT_NBIOT
+
+            config CRYO_CELL_RAT_NBIOT
+                bool "NB-IoT"
+
+            config CRYO_CELL_RAT_LTEM
+                bool "LTE-M (Cat-M)"
+
+            config CRYO_CELL_RAT_AUTO
+                bool "Automatic (LTE-M or NB-IoT)"
+        endchoice
+
+        config CRYO_CELL_APN
+            string "APN"
+            default ""
+            help
+                Access point name of the SIM's operator for NB-IoT/LTE-M.
+
+        config CRYO_CELL_SIM_PIN
+            string "SIM PIN"
+            default ""
+            help
+                Only needed if the SIM is PIN-locked. Stored in sdkconfig (not committed).
+
+        config CRYO_CELL_UART_TX
+            int "UART TX GPIO (to modem RX)"
+            range 0 48
+            default 17
+
+        config CRYO_CELL_UART_RX
+            int "UART RX GPIO (from modem TX)"
+            range 0 48
+            default 18
+
+        config CRYO_CELL_UART_BAUD
+            int "UART baud rate"
+            default 115200
+
+        config CRYO_CELL_PWRKEY_GPIO
+            int "PWRKEY GPIO (-1 = not connected)"
+            range -1 48
+            default -1
+            help
+                Pulsed to power the modem on when it does not answer.
+
+        config CRYO_CELL_PWRKEY_ACTIVE_HIGH
+            bool "PWRKEY GPIO is active high (driven through a transistor)"
+            depends on CRYO_CELL_PWRKEY_GPIO >= 0
+            default y
+
+    endif
 
     config CRYO_NTP_SERVER
         string "NTP server"
