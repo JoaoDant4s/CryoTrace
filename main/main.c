@@ -22,7 +22,6 @@
 static const char *TAG = "cryotrace";
 
 static uint8_t s_box_id[32];
-static uint8_t s_batch_id[32];
 static uint8_t s_domain_separator[32];
 static bool s_identity_ready;
 
@@ -76,8 +75,12 @@ static void publish_event(const fsm_event_t *ev)
         return;
     }
 
+    // The batch is read per event: the box may have been reloaded since boot.
+    uint8_t batch_id[32];
+    device_identity_batch(batch_id);
+
     signed_event_t signed_ev;
-    event_payload_build(ev, s_box_id, s_batch_id, (uint64_t)to_epoch_ms(ev->start_ms),
+    event_payload_build(ev, s_box_id, batch_id, (uint64_t)to_epoch_ms(ev->start_ms),
                         (uint64_t)to_epoch_ms(ev->start_ms + ev->duration_ms), counter,
                         &signed_ev);
 
@@ -115,7 +118,8 @@ static void init_nvs(void)
 static void init_signing(void)
 {
     signed_event_id(CONFIG_CRYO_BOX_ID, s_box_id);
-    signed_event_id(CONFIG_CRYO_BATCH_ID, s_batch_id);
+    uint8_t initial_batch_id[32];
+    signed_event_id(CONFIG_CRYO_BATCH_ID, initial_batch_id);
 
     uint8_t contract[20] = { 0 };
     if (!event_payload_parse_address(CONFIG_CRYO_CONTRACT_ADDRESS, contract)) {
@@ -124,7 +128,7 @@ static void init_signing(void)
     }
     signed_event_domain_separator(CONFIG_CRYO_CHAIN_ID, contract, s_domain_separator);
 
-    esp_err_t err = device_identity_init();
+    esp_err_t err = device_identity_init(initial_batch_id);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "device identity failed: %s", esp_err_to_name(err));
         return;

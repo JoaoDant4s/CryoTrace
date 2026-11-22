@@ -7,8 +7,13 @@ menu "CryoTrace"
             Used in the MQTT topic: coldchain/{box_id}/...
 
     config CRYO_BATCH_ID
-        string "Vaccine batch ID"
+        string "Initial vaccine batch ID"
         default "batch-demo-001"
+        help
+            Batch used until another one is stored on the device. The box
+            carries one batch per trip and is reused for later batches; each
+            new batch is set without reflashing and must be assigned to the
+            box in the contract (registerBatch).
 
     config CRYO_TEMP_MIN_DECI
         int "Range lower limit (tenths of °C)"
