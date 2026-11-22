@@ -10,7 +10,6 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #define CONNECTED_BIT BIT0
@@ -39,16 +38,6 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&ev->ip_info.ip));
         xEventGroupSetBits(s_events, CONNECTED_BIT);
     }
-}
-
-static void start_nvs(void)
-{
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(err);
 }
 
 static esp_err_t start_wifi(void)
@@ -96,7 +85,6 @@ static esp_err_t start_sntp(void)
 
 esp_err_t network_start(void)
 {
-    start_nvs();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 

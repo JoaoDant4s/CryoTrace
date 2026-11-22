@@ -65,7 +65,9 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | Wi-Fi + time sync (NTP) | ✅ builds; still to be validated on the board |
 | Smart contract + tests | ✅ 20 tests (Foundry) |
 | EIP-712 encoding + firmware signing | ✅ verified byte for byte against the contract |
-| Key protected in ESP32 flash + persistent counter | ⏳ |
+| FSM events signed and serialized as the MQTT payload | ✅ tested on the host |
+| Device key generated on-chip + persistent counter (NVS) | ✅ builds; still to be validated on the board |
+| NVS/flash encryption protecting the key | ⏳ |
 | MQTT publishing over TLS (HiveMQ Cloud) | ⏳ |
 | Python relayer | ⏳ |
 | Testnet deployment (Sepolia) and end-to-end test | ⏳ |
@@ -82,6 +84,8 @@ main/                       ESP-IDF firmware (ESP32-S3)
   sensor.c, sensor_sim.c    Sensor reading (simulated for now)
   network.c/.h              Wi-Fi + SNTP
   signed_event.c/.h         EIP-712 encoding and secp256k1 signing
+  event_payload.c/.h        FSM event -> signed event -> MQTT JSON payload
+  device_identity.c/.h      Device key and event counter in NVS
   Kconfig.projbuild         menuconfig options (range, timings, IDs, Wi-Fi)
 components/trezor_crypto/   trezor-crypto subset (MIT): secp256k1 and Keccak
 contracts/                  Foundry project
@@ -121,7 +125,7 @@ Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3
 ```sh
 . $IDF_PATH/export.sh
 idf.py set-target esp32s3
-idf.py menuconfig        # "CryoTrace" and "CryoTrace - Network"
+idf.py menuconfig        # "CryoTrace", "CryoTrace - Network", "CryoTrace - Blockchain"
 idf.py build flash monitor
 ```
 
@@ -129,6 +133,17 @@ In menuconfig:
 
 - **CryoTrace:** box and batch IDs, temperature range (in tenths of °C), anomaly enter/exit times, sampling period, filter window and telemetry period.
 - **CryoTrace - Network:** Wi-Fi SSID and password and NTP server. With no SSID, monitoring still runs, just without network. These credentials are stored in `sdkconfig`, which is not committed.
+- **CryoTrace - Blockchain:** chain ID (default 11155111, Sepolia) and the deployed contract address, which together form the EIP-712 domain.
+
+On first boot the device generates its secp256k1 key from the hardware RNG, stores it in NVS and logs its Ethereum address (`device address (register in the contract): 0x...`). That address is what gets registered for the box in the contract.
+
+Each anomaly/recovery is published on `coldchain/{box_id}/anomaly` as:
+
+```json
+{"boxId":"0x8c4d…","batchId":"0x36c5…","kind":1,"anomalyType":0,
+ "startTime":1767225600000,"endTime":1767225615000,"temperature":790,
+ "peak":1121,"counter":42,"signature":"0x028e…1b"}
+```
 
 ## Signed event
 

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "event_payload.h"
 #include "signed_event.h"
 
 static int failures = 0;
@@ -187,6 +188,108 @@ static void test_centi_degrees(void)
     CHECK(signed_event_centi_degrees(-1000.0f) == INT16_MIN + 1); // MIN reserved
 }
 
+// ---- event_payload: FSM event -> signed event -> MQTT JSON ----
+
+// The FSM transition that corresponds to the shared vector event.
+static fsm_event_t vector_fsm_event(void)
+{
+    fsm_event_t ev = {
+        .type = FSM_EVT_RECOVERY,
+        .anomaly = ANOMALY_ABOVE,
+        .start_ms = 63500,    // monotonic; the epoch times are passed separately
+        .duration_ms = 15000,
+        .temperature = 7.90f,
+        .peak = 11.21f,
+    };
+    return ev;
+}
+
+static void test_fsm_event_signs_like_contract(void)
+{
+    puts("FSM recovery event builds the vector event and the contract's signature");
+    uint8_t box[32], batch[32], contract[20], domain[32], digest[32], sig[65], expected[65];
+    signed_event_id("box01", box);
+    signed_event_id("batch-demo-001", batch);
+    from_hex(CONTRACT_HEX, contract, 20);
+    signed_event_domain_separator(CHAIN_ID, contract, domain);
+
+    fsm_event_t fsm_ev = vector_fsm_event();
+    signed_event_t ev;
+    event_payload_build(&fsm_ev, box, batch, 1767225600000ULL, 1767225615000ULL, 42, &ev);
+
+    signed_event_t want = vector_event();
+    CHECK(memcmp(&ev, &want, sizeof(ev)) == 0);
+
+    uint8_t key[32];
+    device_key(key);
+    signed_event_digest(domain, &ev, digest);
+    CHECK(signed_event_sign(key, digest, sig));
+    from_hex(SIGNATURE_HEX, expected, SIGNED_EVENT_SIG_LEN);
+    CHECK(memcmp(sig, expected, SIGNED_EVENT_SIG_LEN) == 0);
+}
+
+static void test_anomaly_and_offline_fields(void)
+{
+    puts("ANOMALY carries no end time; sensor offline maps to INT16_MIN");
+    uint8_t box[32] = { 0 }, batch[32] = { 0 };
+    fsm_event_t fsm_ev = {
+        .type = FSM_EVT_ANOMALY,
+        .anomaly = ANOMALY_SENSOR_OFFLINE,
+        .start_ms = 95000,
+        .temperature = NAN,
+        .peak = NAN,
+    };
+    signed_event_t ev;
+    event_payload_build(&fsm_ev, box, batch, 1767225695000ULL, 1767225699999ULL, 7, &ev);
+    CHECK(ev.kind == SIGNED_EVENT_KIND_ANOMALY);
+    CHECK(ev.anomaly_type == 2);
+    CHECK(ev.start_time_ms == 1767225695000ULL);
+    CHECK(ev.end_time_ms == 0);
+    CHECK(ev.temperature == INT16_MIN);
+    CHECK(ev.peak == INT16_MIN);
+    CHECK(ev.counter == 7);
+}
+
+static void test_payload_json(void)
+{
+    puts("MQTT payload JSON has the contract field names and the signature");
+    uint8_t sig[65];
+    from_hex(SIGNATURE_HEX, sig, SIGNED_EVENT_SIG_LEN);
+    signed_event_t ev = vector_event();
+
+    char buf[512];
+    int n = event_payload_json(&ev, sig, buf, sizeof(buf));
+    const char *expected =
+        "{\"boxId\":\"0x8c4dae34670896d924ca9ac8cfde3453f494e0165196f54ab7e9b47322ff8dbb\","
+        "\"batchId\":\"0x36c5cfd13ef95136a333b8467f27e5810f10588f87c862682a58cbe406b12fad\","
+        "\"kind\":1,\"anomalyType\":0,\"startTime\":1767225600000,\"endTime\":1767225615000,"
+        "\"temperature\":790,\"peak\":1121,\"counter\":42,"
+        "\"signature\":\"0x028e9e5fa9cfadd4baa59be30fa4b0e04212925aef1f6826cff3e559c437b7db"
+        "1f172a209746ba8c7b51c0680424bd1d77f1f229b6441a0b671e23b6a5bafb7a1b\"}";
+    CHECK(n == (int)strlen(expected));
+    CHECK(strcmp(buf, expected) == 0);
+
+    ev.temperature = INT16_MIN;
+    n = event_payload_json(&ev, sig, buf, sizeof(buf));
+    CHECK(n > 0 && strstr(buf, "\"temperature\":-32768,") != NULL);
+
+    CHECK(event_payload_json(&ev, sig, buf, 100) == -1); // too small
+}
+
+static void test_parse_address(void)
+{
+    puts("contract address parsing");
+    uint8_t addr[20], expected[20];
+    from_hex(CONTRACT_HEX, expected, 20);
+    CHECK(event_payload_parse_address("0xC0FFEE00000000000000000000000000c0FFEe00", addr));
+    CHECK(memcmp(addr, expected, 20) == 0);
+    CHECK(event_payload_parse_address(CONTRACT_HEX, addr)); // without 0x
+    CHECK(memcmp(addr, expected, 20) == 0);
+    CHECK(!event_payload_parse_address("", addr));
+    CHECK(!event_payload_parse_address("0x1234", addr));
+    CHECK(!event_payload_parse_address("0xG0ffee00000000000000000000000000c0ffee00", addr));
+}
+
 int main(void)
 {
     test_keccak_known_value();
@@ -196,6 +299,10 @@ int main(void)
     test_changes_alter_digest();
     test_rejects_invalid_key();
     test_centi_degrees();
+    test_fsm_event_signs_like_contract();
+    test_anomaly_and_offline_fields();
+    test_payload_json();
+    test_parse_address();
 
     if (failures) {
         printf("\n%d check(s) failed\n", failures);

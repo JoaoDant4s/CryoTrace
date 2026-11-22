@@ -79,3 +79,22 @@ menu "CryoTrace - Network"
         default "pool.ntp.org"
 
 endmenu
+
+menu "CryoTrace - Blockchain"
+
+    config CRYO_CHAIN_ID
+        int "Chain ID"
+        range 1 2147483647
+        default 11155111
+        help
+            Network of the CryoTrace contract (11155111 = Sepolia). Part of the
+            EIP-712 domain: a signature is only valid on this network.
+
+    config CRYO_CONTRACT_ADDRESS
+        string "CryoTrace contract address"
+        default ""
+        help
+            0x-prefixed address of the deployed contract. Part of the EIP-712
+            domain: a signature is only valid for this contract.
+
+endmenu

@@ -6,14 +6,25 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 
+#include "device_identity.h"
+#include "event_payload.h"
 #include "filter.h"
 #include "fsm.h"
 #include "network.h"
 #include "sensor.h"
+#include "signed_event.h"
+
+#define EVENT_PAYLOAD_MAX 512
 
 static const char *TAG = "cryotrace";
+
+static uint8_t s_box_id[32];
+static uint8_t s_batch_id[32];
+static uint8_t s_domain_separator[32];
+static bool s_identity_ready;
 
 static int64_t now_ms(void)
 {
@@ -56,27 +67,69 @@ static void publish_telemetry(float raw, float filtered, fsm_state_t state)
     ESP_LOGI(TAG, "coldchain/%s/telemetry %s", CONFIG_CRYO_BOX_ID, payload);
 }
 
+// Signs the FSM transition as the EIP-712 event recorded by the contract.
 static void publish_event(const fsm_event_t *ev)
 {
-    char s_temp[16], s_peak[16], payload[256];
-    temp_json(s_temp, sizeof(s_temp), ev->temperature);
-    temp_json(s_peak, sizeof(s_peak), ev->peak);
-
-    if (ev->type == FSM_EVT_ANOMALY) {
-        snprintf(payload, sizeof(payload),
-                 "{\"event\":\"anomaly\",\"batch\":\"%s\",\"ts\":%lld,\"temp\":%s,"
-                 "\"peak\":%s,\"type\":%d}",
-                 CONFIG_CRYO_BATCH_ID, to_epoch_ms(ev->start_ms), s_temp, s_peak,
-                 ev->anomaly);
-    } else {
-        snprintf(payload, sizeof(payload),
-                 "{\"event\":\"recovery\",\"batch\":\"%s\",\"ts\":%lld,\"ts_end\":%lld,"
-                 "\"duration_ms\":%lld,\"temp\":%s,\"peak\":%s,\"type\":%d}",
-                 CONFIG_CRYO_BATCH_ID, to_epoch_ms(ev->start_ms),
-                 to_epoch_ms(ev->start_ms + ev->duration_ms), ev->duration_ms, s_temp,
-                 s_peak, ev->anomaly);
+    uint32_t counter;
+    if (!s_identity_ready || device_identity_next_counter(&counter) != ESP_OK) {
+        ESP_LOGE(TAG, "event not published: device identity unavailable");
+        return;
     }
+
+    signed_event_t signed_ev;
+    event_payload_build(ev, s_box_id, s_batch_id, (uint64_t)to_epoch_ms(ev->start_ms),
+                        (uint64_t)to_epoch_ms(ev->start_ms + ev->duration_ms), counter,
+                        &signed_ev);
+
+    uint8_t digest[32], sig[SIGNED_EVENT_SIG_LEN];
+    int64_t t0 = esp_timer_get_time();
+    signed_event_digest(s_domain_separator, &signed_ev, digest);
+    bool signed_ok = device_identity_sign(digest, sig);
+    int64_t sign_us = esp_timer_get_time() - t0;
+    if (!signed_ok) {
+        ESP_LOGE(TAG, "event not published: signing failed");
+        return;
+    }
+
+    char payload[EVENT_PAYLOAD_MAX];
+    if (event_payload_json(&signed_ev, sig, payload, sizeof(payload)) < 0) {
+        ESP_LOGE(TAG, "event not published: payload too large");
+        return;
+    }
+    ESP_LOGI(TAG, "%s %s (counter %lu), hash+sign took %lld us",
+             ev->type == FSM_EVT_ANOMALY ? "ANOMALY" : "RECOVERY",
+             fsm_anomaly_name(ev->anomaly), (unsigned long)counter, sign_us);
     ESP_LOGW(TAG, "coldchain/%s/anomaly %s", CONFIG_CRYO_BOX_ID, payload);
+}
+
+static void init_nvs(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+}
+
+static void init_signing(void)
+{
+    signed_event_id(CONFIG_CRYO_BOX_ID, s_box_id);
+    signed_event_id(CONFIG_CRYO_BATCH_ID, s_batch_id);
+
+    uint8_t contract[20] = { 0 };
+    if (!event_payload_parse_address(CONFIG_CRYO_CONTRACT_ADDRESS, contract)) {
+        ESP_LOGW(TAG, "contract address not set (menuconfig > CryoTrace - Blockchain); "
+                      "events will be signed for address 0x0 and rejected on-chain");
+    }
+    signed_event_domain_separator(CONFIG_CRYO_CHAIN_ID, contract, s_domain_separator);
+
+    esp_err_t err = device_identity_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "device identity failed: %s", esp_err_to_name(err));
+        return;
+    }
+    s_identity_ready = true;
 }
 
 static void monitor_task(void *arg)
@@ -131,9 +184,13 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "CryoTrace: box %s, batch %s", CONFIG_CRYO_BOX_ID, CONFIG_CRYO_BATCH_ID);
 
+    init_nvs();
+    // Before Wi-Fi: a first boot generates the device key from the hardware RNG.
+    init_signing();
     sensor_init();
     // Monitoring does not depend on the network: it runs even without Wi-Fi/NTP.
     network_start();
 
-    xTaskCreate(monitor_task, "monitor", 4096, NULL, 5, NULL);
+    // Signing runs in this task for now; it moves to a publisher task with MQTT.
+    xTaskCreate(monitor_task, "monitor", 8192, NULL, 5, NULL);
 }

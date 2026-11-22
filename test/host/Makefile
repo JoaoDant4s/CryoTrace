@@ -8,7 +8,7 @@ TREZOR_SRCS  := $(addprefix $(TREZOR_DIR)/,bignum.c ecdsa.c hmac.c hmac_drbg.c m
 TREZOR_FLAGS := -std=gnu11 -O1 -w -ffunction-sections -fdata-sections
 
 MAIN_SRCS   := test_main.c $(SRC_DIR)/filter.c $(SRC_DIR)/fsm.c $(SRC_DIR)/sensor_sim.c
-SIGNED_SRCS := test_signed_event.c $(SRC_DIR)/signed_event.c random_host.c
+SIGNED_SRCS := test_signed_event.c $(SRC_DIR)/signed_event.c $(SRC_DIR)/event_payload.c random_host.c
 
 .PHONY: test clean
 test: build/test_main build/test_signed_event
