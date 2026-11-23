@@ -72,7 +72,9 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | MQTT publishing over TLS (HiveMQ Cloud) | ⏳ |
 | Python relayer | ✅ tested end to end against a local chain (anvil) |
 | Deploy and provisioning scripts (Foundry) | ✅ tested on a local chain |
-| Testnet deployment (Sepolia) and end-to-end test | ⏳ |
+| Testnet deployment (Sepolia) | ✅ [`0xF8A3…4Dd4`](https://sepolia.etherscan.io/address/0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4); box provisioning waits for the board |
+| Audit frontend (React) | ✅ tested against a local chain and read-only on Sepolia |
+| End-to-end test (board → HiveMQ → relayer → Sepolia) | ⏳ |
 | Physical sensor / hardware simulation | ⏳ (last) |
 | Telegraf → InfluxDB → Grafana | out of scope |
 
@@ -102,6 +104,7 @@ contracts/                  Foundry project
   test/                     Contract tests and the vector shared with the firmware
 test/host/                  Firmware tests in C, running on the PC (gcc)
 relayer/                    Python relayer: MQTT -> recordEvent (see relayer/README.md)
+frontend/                   React audit app: batch audit, activity, event check, provisioning
 ```
 
 ## Build and test
@@ -140,6 +143,19 @@ python3 -m venv .venv
 ```
 
 Configuration and how to run it against HiveMQ and Sepolia: [relayer/README.md](relayer/README.md).
+
+### Frontend
+
+Requires Node.js 18+. Points to the Sepolia deployment by default; MetaMask is only needed to send transactions.
+
+```sh
+cd frontend
+npm install
+npm test        # audit logic, payload parsing, the shared signing vector, ABI vs. contract
+npm run dev     # http://localhost:5173
+```
+
+Details: [frontend/README.md](frontend/README.md).
 
 ### Firmware (ESP32-S3)
 
