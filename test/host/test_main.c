@@ -2,6 +2,7 @@
 // Run: make -C test/host
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "filter.h"
@@ -150,12 +151,55 @@ static void test_filter(void)
 
 // Runs the full pipeline (simulated sensor -> filter -> FSM), as the
 // firmware does, and checks the events of one cycle.
-static void test_simulation_cycle(void)
+static void test_ema_and_kalman(void)
 {
-    puts("simulated sensor cycle produces only the expected anomalies:");
+    printf("EMA, Kalman and median filters\n");
+    filter_ema_t e;
+    filter_ema_init(&e, 0.5f);
+    CHECK(filter_ema_add(&e, 4.0f) == 4.0f);  // first sample taken as is
+    CHECK(filter_ema_add(&e, 8.0f) == 6.0f);
+    CHECK(filter_ema_add(&e, 8.0f) == 7.0f);
+    filter_ema_reset(&e);
+    CHECK(filter_ema_add(&e, 3.0f) == 3.0f);
+
+    filter_kalman_t k;
+    filter_kalman_init(&k, 0.001f, 0.09f);
+    CHECK(filter_kalman_add(&k, 5.0f) == 5.0f);
+    float y = 5.0f;
+    for (int i = 0; i < 200; i++) {
+        y = filter_kalman_add(&k, 7.0f);  // step: converges, never overshoots
+        CHECK(y <= 7.0f);
+    }
+    CHECK(fabsf(y - 7.0f) < 0.01f);
+    // steady-state gain = EMA alpha: k = p/(p+r), with p the prior variance
+    float p_post = k.p, prior = p_post + k.q;
+    float gain = prior / (prior + k.r);
+    CHECK(gain > 0.05f && gain < 0.2f);
+    filter_kalman_reset(&k);
+    CHECK(filter_kalman_add(&k, 2.0f) == 2.0f);
+
+    filter_median_t m;
+    filter_median_init(&m, 5);
+    CHECK(filter_median_add(&m, 5.0f) == 5.0f);
+    CHECK(filter_median_add(&m, 7.0f) == 6.0f);   // two values: their mean
+    CHECK(filter_median_add(&m, 5.2f) == 5.2f);
+    CHECK(filter_median_add(&m, 12.0f) == 6.1f);  // (5.2 + 7) / 2
+    CHECK(filter_median_add(&m, 5.1f) == 5.2f);   // glitches 7 and 12 removed
+    CHECK(filter_median_add(&m, 5.3f) == 5.3f);   // window slid past the 5.0
+    filter_median_reset(&m);
+    CHECK(filter_median_add(&m, 3.0f) == 3.0f);
+}
+
+// Same pipeline as main.c: the median (firmware default) or the moving average.
+static void test_simulation_cycle(bool median)
+{
+    printf("simulated sensor cycle produces only the expected anomalies (%s):\n",
+           median ? "median N=5" : "moving average N=4");
     filter_avg_t f;
+    filter_median_t fm;
     fsm_t fsm;
     filter_init(&f, 4);
+    filter_median_init(&fm, 5);
     anomaly_fsm_init(&fsm, &CFG);
 
     fsm_event_t events[8];
@@ -165,8 +209,9 @@ static void test_simulation_cycle(void)
         float filtered = NAN;
         if (isnan(raw)) {
             filter_reset(&f);
+            filter_median_reset(&fm);
         } else {
-            filtered = filter_add(&f, raw);
+            filtered = median ? filter_median_add(&fm, raw) : filter_add(&f, raw);
         }
         fsm_event_t ev;
         if (anomaly_fsm_process(&fsm, filtered, t, &ev) && n < 8) {
@@ -203,7 +248,9 @@ int main(void)
     test_recovery();
     test_relapse_during_exit();
     test_types();
-    test_simulation_cycle();
+    test_ema_and_kalman();
+    test_simulation_cycle(true);
+    test_simulation_cycle(false);
 
     if (failures) {
         printf("\n%d check(s) failed\n", failures);

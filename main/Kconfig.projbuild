@@ -50,15 +50,32 @@ menu "CryoTrace"
             Must be much smaller than the enter and exit times: the state
             change happens between T and T + period after the start.
 
-    config CRYO_FILTER_WINDOW
-        int "Moving average window (samples)"
-        range 1 16
-        default 4
+    choice CRYO_FILTER
+        prompt "Reading filter"
+        default CRYO_FILTER_MEDIAN
+        help
+            Smooths the sensor readings before the anomaly state machine.
+            The comparison in analysis/ (detection delay, peak error, false
+            alarms) favours the median: it discards isolated glitches,
+            which a moving average spreads over its whole window and can
+            turn into a false anomaly.
 
-    config CRYO_TELEMETRY_PERIOD_S
-        int "Telemetry publish period (s)"
-        range 1 3600
-        default 10
+        config CRYO_FILTER_MEDIAN
+            bool "Running median"
+        config CRYO_FILTER_MOVING_AVERAGE
+            bool "Moving average"
+    endchoice
+
+    config CRYO_FILTER_WINDOW
+        int "Filter window (samples)"
+        range 1 9 if CRYO_FILTER_MEDIAN
+        range 1 16
+        default 5 if CRYO_FILTER_MEDIAN
+        default 4
+        help
+            Median: use an odd number (5 = 2.5 s at 500 ms sampling; it
+            ignores up to 2 bad readings in a row). Moving average: keep the
+            window shorter than the anomaly enter time.
 
     choice CRYO_SENSOR
         prompt "Temperature sensor"
@@ -188,6 +205,20 @@ menu "CryoTrace - MQTT"
         default ""
         help
             Stored in sdkconfig (git-ignored), like the Wi-Fi password.
+
+    config CRYO_MQTT_KEEPALIVE_S
+        int "Keep-alive interval (s)"
+        range 30 3600
+        default 300
+        help
+            How often an idle connection pings the broker. The broker marks
+            the box offline after 1.5x this time without hearing from it.
+            Each ping costs ~180 B with TLS and TCP/IP: at 30 s that is
+            524 kB/day, far more than the signed events themselves; at
+            300 s, 52 kB/day. Some cellular networks drop idle TCP
+            connections after a few minutes: the box then notices on its
+            next publish and reconnects, and no event is lost (they wait in
+            the outbox until the broker acknowledges them).
 
 endmenu
 

@@ -33,7 +33,7 @@ flowchart TB
 
     TERM["Audit<br/>query by batch"]
 
-    FW -- "cryotrace/{box_name}/telemetry · QoS 0" --> BROKER
+    FW -. "telemetry · QoS 0" .-> BROKER
     SIGN -- "cryotrace/{box_name}/anomaly · QoS 1" --> BROKER
     BROKER -- "anomaly" --> RELAYER
     RELAYER -- "transaction" --> SC
@@ -47,7 +47,7 @@ flowchart TB
     class TELEGRAF,INFLUX,GRAFANA out
 ```
 
-Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry, but the Telegraf → InfluxDB → Grafana path exists only in the design.
+Dashed parts are out of the implementation scope: periodic telemetry and the Telegraf → InfluxDB → Grafana path exist only in the design. The firmware publishes only the signed anomaly/recovery events (plus its online/offline status).
 
 **Key ideas:**
 
@@ -69,12 +69,13 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | EIP-712 encoding + firmware signing | ✅ verified byte for byte against the contract |
 | FSM events signed and serialized as the MQTT payload | ✅ tested on the host |
 | Device key generated on-chip + persistent counter (NVS) | ✅ builds; still to be validated on the board |
-| MQTT over TLS: signed events (QoS 1, store-and-forward outbox in NVS), telemetry, status (last will), batch subscription | ✅ builds (Wi-Fi and cellular); outbox tested on the host; still to be validated on the board |
+| MQTT over TLS: signed events (QoS 1, store-and-forward outbox in NVS), status (last will), batch subscription | ✅ builds (Wi-Fi and cellular); outbox tested on the host; still to be validated on the board |
 | Batch announcements (relayer → box, retained MQTT) | ✅ relayer tested end to end (anvil + Mosquitto); firmware parser tested on the host |
 | Python relayer | ✅ tested end to end against a local chain (anvil) |
 | Deploy and provisioning scripts (Foundry) | ✅ tested on a local chain |
 | Testnet deployment (Sepolia) | ✅ [`0xF8A3…4Dd4`](https://sepolia.etherscan.io/address/0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4); box provisioning waits for the board |
 | Audit frontend (React) | ✅ tested against a local chain and read-only on Sepolia |
+| Metrics without the board (filter comparison, data reduction) | ✅ [analysis/](analysis/README.md) |
 | End-to-end test (board → MQTT broker → relayer → Sepolia) | ⏳ |
 | Physical sensor / hardware simulation | ⏳ (last) |
 | Telegraf → InfluxDB → Grafana | out of scope |
@@ -89,7 +90,7 @@ main/                       ESP-IDF firmware (ESP32-S3)
     sensor.c/.h             Sensor reading (simulated for now)
     sensor_sim.c/.h         Simulated temperature profile
   monitoring/
-    filter.c/.h             Moving average
+    filter.c/.h             Moving average (+ median, EMA, Kalman for comparison)
     fsm.c/.h                NORMAL ⇄ ANOMALY state machine
   signing/
     signed_event.c/.h       EIP-712 encoding and secp256k1 signing
@@ -112,6 +113,7 @@ contracts/                  Foundry project
 test/host/                  Firmware tests in C, running on the PC (gcc)
 relayer/                    Python relayer: MQTT -> recordEvent (see relayer/README.md)
 frontend/                   React audit app: batch audit, activity, event check, provisioning
+analysis/                   Metrics without the board: filter bench, data reduction, figures
 ```
 
 ## Build and test
@@ -177,7 +179,7 @@ idf.py build flash monitor
 
 In menuconfig:
 
-- **CryoTrace:** box name and initial batch name, temperature range (in tenths of °C), anomaly enter/exit times, sampling period, filter window and telemetry period.
+- **CryoTrace:** box name and initial batch name, temperature range (in tenths of °C), anomaly enter/exit times, sampling period, reading filter (running median by default, or moving average) and its window.
 - **CryoTrace - Network:** the network link, plus the NTP server. Credentials are stored in `sdkconfig`, which is not committed.
   - **Wi-Fi** (default): SSID and password. With no SSID, monitoring still runs, just without network.
   - **Cellular modem:** a SIMCom SIM7080G on a UART, driven by [esp_modem](https://components.espressif.com/components/espressif/esp_modem) as a PPP interface (MQTT, TLS and NTP run on top unchanged). Options: radio technology (NB-IoT, LTE-M or automatic), APN, SIM PIN, UART TX/RX pins and baud rate, and an optional PWRKEY GPIO to power the modem on.
@@ -191,7 +193,6 @@ MQTT topics (`box_name` is the readable name, e.g. `box01`; `box_id` is its kecc
 | Topic | Direction | QoS | Content |
 |---|---|---|---|
 | `cryotrace/{box_name}/anomaly` | box → relayer | 1 | signed anomaly/recovery event (below) |
-| `cryotrace/{box_name}/telemetry` | box → broker | 0 | filtered reading every 10 s (not stored on-chain) |
 | `cryotrace/{box_name}/status` | box → broker | 1, retained | `online`; the broker sets `offline` when the box drops (last will) |
 | `cryotrace/{box_id}/batch` | relayer → box | 1, retained | batch the contract assigned to the box |
 

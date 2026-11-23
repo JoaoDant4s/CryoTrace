@@ -114,7 +114,7 @@ esp_err_t mqtt_link_start(const uint8_t box_id[32], mqtt_link_cb_t cb)
             },
             // Keeps the batch subscription across reconnects.
             .disable_clean_session = true,
-            .keepalive = 30,
+            .keepalive = CONFIG_CRYO_MQTT_KEEPALIVE_S,
         },
     };
     s_client = esp_mqtt_client_init(&cfg);

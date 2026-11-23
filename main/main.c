@@ -13,7 +13,6 @@
 #include "event_payload.h"
 #include "filter.h"
 #include "fsm.h"
-#include "mqtt_link.h"
 #include "network.h"
 #include "publisher.h"
 #include "sensor.h"
@@ -28,29 +27,6 @@ static bool s_identity_ready;
 static int64_t now_ms(void)
 {
     return esp_timer_get_time() / 1000;
-}
-
-// JSON has no NaN: an invalid reading becomes null.
-static void temp_json(char *buf, size_t size, float t)
-{
-    if (isnan(t)) {
-        snprintf(buf, size, "null");
-    } else {
-        snprintf(buf, size, "%.2f", t);
-    }
-}
-
-// Routine readings: QoS 0, sent only while connected (losing one is harmless;
-// what matters on-chain are the signed anomaly events).
-static void publish_telemetry(float raw, float filtered, fsm_state_t state)
-{
-    char s_raw[16], s_filtered[16], payload[160];
-    temp_json(s_raw, sizeof(s_raw), raw);
-    temp_json(s_filtered, sizeof(s_filtered), filtered);
-    int len = snprintf(payload, sizeof(payload), "{\"ts\":%lld,\"temp\":%s,\"raw\":%s,\"state\":\"%s\"}",
-                       network_epoch_ms(now_ms()), s_filtered, s_raw, anomaly_fsm_state_name(state));
-    ESP_LOGI(TAG, "telemetry %s", payload);
-    mqtt_link_publish("telemetry", payload, len, 0);
 }
 
 // Resource usage, for the edge metrics (free heap, stack margins).
@@ -92,10 +68,24 @@ static void init_signing(void)
     s_identity_ready = true;
 }
 
+// Reading filter chosen in menuconfig (median by default, see analysis/).
+#if CONFIG_CRYO_FILTER_MEDIAN
+static filter_median_t s_filter;
+static void reading_filter_init(void) { filter_median_init(&s_filter, CONFIG_CRYO_FILTER_WINDOW); }
+static void reading_filter_reset(void) { filter_median_reset(&s_filter); }
+static float reading_filter_add(float x) { return filter_median_add(&s_filter, x); }
+#define FILTER_NAME "median"
+#else
+static filter_avg_t s_filter;
+static void reading_filter_init(void) { filter_init(&s_filter, CONFIG_CRYO_FILTER_WINDOW); }
+static void reading_filter_reset(void) { filter_reset(&s_filter); }
+static float reading_filter_add(float x) { return filter_add(&s_filter, x); }
+#define FILTER_NAME "moving average"
+#endif
+
 static void monitor_task(void *arg)
 {
-    filter_avg_t filter;
-    filter_init(&filter, CONFIG_CRYO_FILTER_WINDOW);
+    reading_filter_init();
 
     fsm_t fsm;
     const fsm_config_t cfg = {
@@ -106,14 +96,13 @@ static void monitor_task(void *arg)
     };
     anomaly_fsm_init(&fsm, &cfg);
 
-    ESP_LOGI(TAG, "range [%.1f, %.1f] °C, enter %lu ms, exit %lu ms, sample every %d ms",
+    ESP_LOGI(TAG, "range [%.1f, %.1f] °C, enter %lu ms, exit %lu ms, sample every %d ms, %s filter N=%d",
              cfg.temp_min, cfg.temp_max, (unsigned long)cfg.enter_time_ms,
-             (unsigned long)cfg.exit_time_ms, CONFIG_CRYO_SAMPLE_PERIOD_MS);
+             (unsigned long)cfg.exit_time_ms, CONFIG_CRYO_SAMPLE_PERIOD_MS, FILTER_NAME,
+             CONFIG_CRYO_FILTER_WINDOW);
 
-    const int samples_per_telemetry =
-        CONFIG_CRYO_TELEMETRY_PERIOD_S * 1000 / CONFIG_CRYO_SAMPLE_PERIOD_MS;
-    int counter = 0;
-    int resource_logs = 0;
+    const int samples_per_minute = 60000 / CONFIG_CRYO_SAMPLE_PERIOD_MS;
+    int resource_count = 0;
     TickType_t next_wake = xTaskGetTickCount();
 
     for (;;) {
@@ -121,9 +110,9 @@ static void monitor_task(void *arg)
         float filtered = NAN;
         if (isnan(raw)) {
             // Don't mix readings from before and after a failure.
-            filter_reset(&filter);
+            reading_filter_reset();
         } else {
-            filtered = filter_add(&filter, raw);
+            filtered = reading_filter_add(raw);
         }
         ESP_LOGD(TAG, "raw=%.2f filtered=%.2f", raw, filtered);
 
@@ -135,12 +124,9 @@ static void monitor_task(void *arg)
             publisher_submit(&ev);
         }
 
-        if (++counter >= samples_per_telemetry) {
-            counter = 0;
-            publish_telemetry(raw, filtered, fsm.state);
-            if (++resource_logs % 6 == 0) {
-                log_resources();
-            }
+        if (++resource_count >= samples_per_minute) {
+            resource_count = 0;
+            log_resources();
         }
 
         vTaskDelayUntil(&next_wake, pdMS_TO_TICKS(CONFIG_CRYO_SAMPLE_PERIOD_MS));
