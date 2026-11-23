@@ -16,8 +16,8 @@ typedef enum {
 } signed_event_kind_t;
 
 typedef struct {
-    uint8_t box_id[32];     // keccak256 of the box id string
-    uint8_t batch_id[32];   // keccak256 of the batch id string
+    uint8_t box_id[32];     // keccak256 of the box name, e.g. "box01"
+    uint8_t batch_id[32];   // keccak256 of the batch name
     uint8_t kind;           // signed_event_kind_t
     uint8_t anomaly_type;   // anomaly_type_t (fsm.h)
     uint64_t start_time_ms; // epoch ms, 0 = clock not synced

@@ -9,7 +9,7 @@
 //   topic:   cryotrace/0x<boxId as 64 hex>/batch
 //   payload: {"boxId": "0x...", "batchId": "0x...", "blockNumber": ..., "txHash": "0x..."}
 //
-// The topic carries the box id hash, not the name: the contract only knows the
+// The topic carries the box id (hash of the name), not the name: the contract only knows the
 // hash. Plain C (no ESP-IDF) so it can be tested on the host.
 
 // "cryotrace/0x" + 64 hex + "/batch" + NUL

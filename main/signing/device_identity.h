@@ -23,7 +23,7 @@ esp_err_t device_identity_next_counter(uint32_t *counter);
 
 bool device_identity_sign(const uint8_t digest[32], uint8_t sig[SIGNED_EVENT_SIG_LEN]);
 
-// Batch the box currently carries (keccak256 of the batch id). A box carries
+// Batch the box currently carries (keccak256 of the batch name). A box carries
 // one batch at a time; the next one is set when the box is reloaded, without
 // reflashing. The contract is the source of truth (registerBatch): events
 // signed for a batch not assigned to this box are rejected on-chain.

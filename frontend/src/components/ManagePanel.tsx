@@ -76,7 +76,7 @@ function RegisterDevice({ wallet, roles, onChanged }: Props) {
         ). Registering again replaces the key: events signed by the old key are refused from then on.
       </p>
       <label>
-        Box ID
+        Box name
         <input value={box} onChange={(e) => setBox(e.target.value)} placeholder="box01" />
       </label>
       <p className="muted small">
@@ -124,17 +124,17 @@ function RegisterBatch({ wallet, roles, onChanged }: Props) {
       <h3>Assign a batch to a box</h3>
       <p className="muted small">
         One batch per trip: done once, when the batch is packed. The box is reused for later batches. The box firmware
-        must be set to the same batch ID.
+        must be set to the same batch name.
       </p>
       <label>
-        Batch ID
+        Batch name
         <input value={batch} onChange={(e) => setBatch(e.target.value)} placeholder="e.g. batch-2026-11-001" />
       </label>
       {taken && (
         <p className="error small">Already assigned to box {labelOf(currentBox)}: a batch can only be assigned once.</p>
       )}
       <label>
-        Box ID
+        Box name
         <input value={box} onChange={(e) => setBox(e.target.value)} placeholder="box01" />
       </label>
       {boxDevice === zeroAddress && <p className="error small">This box has no device registered yet.</p>}

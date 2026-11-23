@@ -60,7 +60,7 @@ forge test --gas-report  # gas per function
 
 4. **Provision a box and a batch.** `DEVICE_ADDRESS` is the address the ESP32 logs
    on its first boot (`device address (register in the contract): 0x...`);
-   `BOX_ID` / `BATCH_ID` are the strings set in the firmware's menuconfig.
+   `BOX_NAME` / `BATCH_NAME` are the names set in the firmware's menuconfig (the contract stores their keccak256 hashes, the ids).
    Already-done steps are skipped, so it is safe to rerun:
 
    ```sh

@@ -1,8 +1,8 @@
 #include <math.h>
 #include <stdio.h>
-#include <sys/time.h>
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -13,11 +13,11 @@
 #include "event_payload.h"
 #include "filter.h"
 #include "fsm.h"
+#include "mqtt_link.h"
 #include "network.h"
+#include "publisher.h"
 #include "sensor.h"
 #include "signed_event.h"
-
-#define EVENT_PAYLOAD_MAX 512
 
 static const char *TAG = "cryotrace";
 
@@ -30,19 +30,6 @@ static int64_t now_ms(void)
     return esp_timer_get_time() / 1000;
 }
 
-// Converts a monotonic clock instant into epoch time (ms, UTC).
-// Returns 0 while NTP has not set the wall clock.
-static int64_t to_epoch_ms(int64_t mono_ms)
-{
-    if (!network_time_synced()) {
-        return 0;
-    }
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    int64_t epoch_now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-    return epoch_now - (now_ms() - mono_ms);
-}
-
 // JSON has no NaN: an invalid reading becomes null.
 static void temp_json(char *buf, size_t size, float t)
 {
@@ -53,56 +40,25 @@ static void temp_json(char *buf, size_t size, float t)
     }
 }
 
-// For now messages only go to the log, already in the format and on
-// the topic they will be published to over MQTT.
+// Routine readings: QoS 0, sent only while connected (losing one is harmless;
+// what matters on-chain are the signed anomaly events).
 static void publish_telemetry(float raw, float filtered, fsm_state_t state)
 {
     char s_raw[16], s_filtered[16], payload[160];
     temp_json(s_raw, sizeof(s_raw), raw);
     temp_json(s_filtered, sizeof(s_filtered), filtered);
-    snprintf(payload, sizeof(payload),
-             "{\"ts\":%lld,\"temp\":%s,\"raw\":%s,\"state\":\"%s\"}",
-             to_epoch_ms(now_ms()), s_filtered, s_raw, anomaly_fsm_state_name(state));
-    ESP_LOGI(TAG, "cryotrace/%s/telemetry %s", CONFIG_CRYO_BOX_ID, payload);
+    int len = snprintf(payload, sizeof(payload), "{\"ts\":%lld,\"temp\":%s,\"raw\":%s,\"state\":\"%s\"}",
+                       network_epoch_ms(now_ms()), s_filtered, s_raw, anomaly_fsm_state_name(state));
+    ESP_LOGI(TAG, "telemetry %s", payload);
+    mqtt_link_publish("telemetry", payload, len, 0);
 }
 
-// Signs the FSM transition as the EIP-712 event recorded by the contract.
-static void publish_event(const fsm_event_t *ev)
+// Resource usage, for the edge metrics (free heap, stack margins).
+static void log_resources(void)
 {
-    uint32_t counter;
-    if (!s_identity_ready || device_identity_next_counter(&counter) != ESP_OK) {
-        ESP_LOGE(TAG, "event not published: device identity unavailable");
-        return;
-    }
-
-    // The batch is read per event: the box may have been reloaded since boot.
-    uint8_t batch_id[32];
-    device_identity_batch(batch_id);
-
-    signed_event_t signed_ev;
-    event_payload_build(ev, s_box_id, batch_id, (uint64_t)to_epoch_ms(ev->start_ms),
-                        (uint64_t)to_epoch_ms(ev->start_ms + ev->duration_ms), counter,
-                        &signed_ev);
-
-    uint8_t digest[32], sig[SIGNED_EVENT_SIG_LEN];
-    int64_t t0 = esp_timer_get_time();
-    signed_event_digest(s_domain_separator, &signed_ev, digest);
-    bool signed_ok = device_identity_sign(digest, sig);
-    int64_t sign_us = esp_timer_get_time() - t0;
-    if (!signed_ok) {
-        ESP_LOGE(TAG, "event not published: signing failed");
-        return;
-    }
-
-    char payload[EVENT_PAYLOAD_MAX];
-    if (event_payload_json(&signed_ev, sig, payload, sizeof(payload)) < 0) {
-        ESP_LOGE(TAG, "event not published: payload too large");
-        return;
-    }
-    ESP_LOGI(TAG, "%s %s (counter %lu), hash+sign took %lld us",
-             ev->type == FSM_EVT_ANOMALY ? "ANOMALY" : "RECOVERY",
-             anomaly_fsm_anomaly_name(ev->anomaly), (unsigned long)counter, sign_us);
-    ESP_LOGW(TAG, "cryotrace/%s/anomaly %s", CONFIG_CRYO_BOX_ID, payload);
+    ESP_LOGI(TAG, "heap free %lu B (min %lu B), stack free: monitor %lu B, publisher %lu B",
+             (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(),
+             (unsigned long)uxTaskGetStackHighWaterMark(NULL), (unsigned long)publisher_stack_free());
 }
 
 static void init_nvs(void)
@@ -117,9 +73,9 @@ static void init_nvs(void)
 
 static void init_signing(void)
 {
-    signed_event_id(CONFIG_CRYO_BOX_ID, s_box_id);
+    signed_event_id(CONFIG_CRYO_BOX_NAME, s_box_id);
     uint8_t initial_batch_id[32];
-    signed_event_id(CONFIG_CRYO_BATCH_ID, initial_batch_id);
+    signed_event_id(CONFIG_CRYO_BATCH_NAME, initial_batch_id);
 
     uint8_t contract[20] = { 0 };
     if (!event_payload_parse_address(CONFIG_CRYO_CONTRACT_ADDRESS, contract)) {
@@ -157,6 +113,7 @@ static void monitor_task(void *arg)
     const int samples_per_telemetry =
         CONFIG_CRYO_TELEMETRY_PERIOD_S * 1000 / CONFIG_CRYO_SAMPLE_PERIOD_MS;
     int counter = 0;
+    int resource_logs = 0;
     TickType_t next_wake = xTaskGetTickCount();
 
     for (;;) {
@@ -172,12 +129,18 @@ static void monitor_task(void *arg)
 
         fsm_event_t ev;
         if (anomaly_fsm_process(&fsm, filtered, now_ms(), &ev)) {
-            publish_event(&ev);
+            ESP_LOGW(TAG, "%s %s", ev.type == FSM_EVT_ANOMALY ? "ANOMALY" : "RECOVERY",
+                     anomaly_fsm_anomaly_name(ev.anomaly));
+            // Signing and delivery happen in the publisher task.
+            publisher_submit(&ev);
         }
 
         if (++counter >= samples_per_telemetry) {
             counter = 0;
             publish_telemetry(raw, filtered, fsm.state);
+            if (++resource_logs % 6 == 0) {
+                log_resources();
+            }
         }
 
         vTaskDelayUntil(&next_wake, pdMS_TO_TICKS(CONFIG_CRYO_SAMPLE_PERIOD_MS));
@@ -186,15 +149,23 @@ static void monitor_task(void *arg)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "CryoTrace: box %s, batch %s", CONFIG_CRYO_BOX_ID, CONFIG_CRYO_BATCH_ID);
+    ESP_LOGI(TAG, "CryoTrace: box %s, batch %s", CONFIG_CRYO_BOX_NAME, CONFIG_CRYO_BATCH_NAME);
 
     init_nvs();
     // Before Wi-Fi: a first boot generates the device key from the hardware RNG.
     init_signing();
     sensor_init();
-    // Monitoring does not depend on the network: it runs even without Wi-Fi/NTP.
+    // Monitoring does not depend on the network: it runs even without a link or
+    // NTP, and the publisher keeps the signed events until the broker has them.
     network_start();
+    if (s_identity_ready) {
+        esp_err_t err = publisher_start(s_box_id, s_domain_separator);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "publisher not started: %s", esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGE(TAG, "no device identity: events will not be signed or published");
+    }
 
-    // Signing runs in this task for now; it moves to a publisher task with MQTT.
-    xTaskCreate(monitor_task, "monitor", 8192, NULL, 5, NULL);
+    xTaskCreate(monitor_task, "monitor", 4096, NULL, 5, NULL);
 }

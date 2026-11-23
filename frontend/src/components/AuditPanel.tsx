@@ -141,8 +141,8 @@ export function AuditPanel() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Batch ID (e.g. batch-demo-001) or its 0x hash"
-          aria-label="Batch ID"
+          placeholder="Batch name (e.g. batch-demo-001) or its 0x id"
+          aria-label="Batch name"
         />
         <button type="submit" disabled={loading}>
           {loading ? "Loading…" : "Audit"}
@@ -152,7 +152,7 @@ export function AuditPanel() {
       {error && <Notice tone="bad">{error}</Notice>}
       {notFound && (
         <Notice tone="warn">
-          Batch <b>{notFound}</b> is not registered on the contract. Batch IDs are case-sensitive and must match the
+          Batch <b>{notFound}</b> is not registered on the contract. Batch names are case-sensitive and must match the
           firmware configuration exactly.
         </Notice>
       )}

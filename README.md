@@ -20,7 +20,7 @@ flowchart TB
     end
 
     subgraph CLOUD["Cloud"]
-        BROKER["MQTT broker<br/>HiveMQ Cloud"]
+        BROKER["MQTT broker<br/>EMQX Cloud Serverless"]
         RELAYER["Relayer (Python)<br/>forwards the already-signed event"]
         TELEGRAF["Telegraf"]
         INFLUX[("InfluxDB")]
@@ -33,8 +33,8 @@ flowchart TB
 
     TERM["Audit<br/>query by batch"]
 
-    FW -- "cryotrace/{box_id}/telemetry · QoS 0" --> BROKER
-    SIGN -- "cryotrace/{box_id}/anomaly · QoS 1" --> BROKER
+    FW -- "cryotrace/{box_name}/telemetry · QoS 0" --> BROKER
+    SIGN -- "cryotrace/{box_name}/anomaly · QoS 1" --> BROKER
     BROKER -- "anomaly" --> RELAYER
     RELAYER -- "transaction" --> SC
     SC -- "read (view)" --> TERM
@@ -69,13 +69,13 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | EIP-712 encoding + firmware signing | ✅ verified byte for byte against the contract |
 | FSM events signed and serialized as the MQTT payload | ✅ tested on the host |
 | Device key generated on-chip + persistent counter (NVS) | ✅ builds; still to be validated on the board |
-| MQTT publishing over TLS (HiveMQ Cloud) | ⏳ |
-| Batch announcements (relayer → box, retained MQTT) | ✅ relayer tested end to end (anvil + Mosquitto); firmware parser tested on the host, subscription comes with MQTT |
+| MQTT over TLS: signed events (QoS 1, store-and-forward outbox in NVS), telemetry, status (last will), batch subscription | ✅ builds (Wi-Fi and cellular); outbox tested on the host; still to be validated on the board |
+| Batch announcements (relayer → box, retained MQTT) | ✅ relayer tested end to end (anvil + Mosquitto); firmware parser tested on the host |
 | Python relayer | ✅ tested end to end against a local chain (anvil) |
 | Deploy and provisioning scripts (Foundry) | ✅ tested on a local chain |
 | Testnet deployment (Sepolia) | ✅ [`0xF8A3…4Dd4`](https://sepolia.etherscan.io/address/0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4); box provisioning waits for the board |
 | Audit frontend (React) | ✅ tested against a local chain and read-only on Sepolia |
-| End-to-end test (board → HiveMQ → relayer → Sepolia) | ⏳ |
+| End-to-end test (board → MQTT broker → relayer → Sepolia) | ⏳ |
 | Physical sensor / hardware simulation | ⏳ (last) |
 | Telegraf → InfluxDB → Grafana | out of scope |
 
@@ -96,6 +96,10 @@ main/                       ESP-IDF firmware (ESP32-S3)
     event_payload.c/.h      FSM event -> signed event -> MQTT JSON payload
     device_identity.c/.h    Device key and event counter in NVS
   messaging/
+    mqtt_link.c/.h          MQTT over TLS: status, batch subscription
+    publisher.c/.h          Publisher task: sign, queue, publish (QoS 1)
+    event_outbox.c/.h       Store-and-forward queue of signed events
+    event_outbox_store.c/.h Outbox persistence in NVS
     batch_message.c/.h      Batch announcement from the relayer (topic + parsing)
   network/
     network.c/.h            Network start + SNTP
@@ -120,7 +124,7 @@ No board or ESP-IDF needed, just `gcc` and `make` (Linux).
 make -C test/host
 ```
 
-Runs the FSM and filter tests (including a full cycle of the simulated sensor) and the signing tests, which check that the C code produces exactly the hash and signature the contract expects.
+Runs the FSM and filter tests (including a full cycle of the simulated sensor), the signing tests, which check that the C code produces exactly the hash and signature the contract expects, and the messaging tests (event outbox, and the batch announcement exactly as the relayer sends it), the latter under AddressSanitizer.
 
 ### Smart contract
 
@@ -145,7 +149,7 @@ python3 -m venv .venv
 .venv/bin/python -m pytest
 ```
 
-Configuration and how to run it against HiveMQ and Sepolia: [relayer/README.md](relayer/README.md).
+Configuration and how to run it against the MQTT broker and Sepolia: [relayer/README.md](relayer/README.md).
 
 ### Frontend
 
@@ -167,21 +171,33 @@ Requires [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3
 ```sh
 . $IDF_PATH/export.sh
 idf.py set-target esp32s3
-idf.py menuconfig        # "CryoTrace", "CryoTrace - Network", "CryoTrace - Blockchain"
+idf.py menuconfig        # "CryoTrace", "CryoTrace - Network", "CryoTrace - MQTT", "CryoTrace - Blockchain"
 idf.py build flash monitor
 ```
 
 In menuconfig:
 
-- **CryoTrace:** box and batch IDs, temperature range (in tenths of °C), anomaly enter/exit times, sampling period, filter window and telemetry period.
+- **CryoTrace:** box name and initial batch name, temperature range (in tenths of °C), anomaly enter/exit times, sampling period, filter window and telemetry period.
 - **CryoTrace - Network:** the network link, plus the NTP server. Credentials are stored in `sdkconfig`, which is not committed.
   - **Wi-Fi** (default): SSID and password. With no SSID, monitoring still runs, just without network.
   - **Cellular modem:** a SIMCom SIM7080G on a UART, driven by [esp_modem](https://components.espressif.com/components/espressif/esp_modem) as a PPP interface (MQTT, TLS and NTP run on top unchanged). Options: radio technology (NB-IoT, LTE-M or automatic), APN, SIM PIN, UART TX/RX pins and baud rate, and an optional PWRKEY GPIO to power the modem on.
+- **CryoTrace - MQTT:** broker URI (e.g. `mqtts://<deployment>.ala.us-east-1.emqxsl.com:8883` on EMQX Cloud Serverless, free tier; any MQTT 3.1.1 broker with TLS works, and the server certificate is checked against the CA bundle in ESP-IDF), username and password.
 - **CryoTrace - Blockchain:** chain ID (default 11155111, Sepolia) and the deployed contract address, which together form the EIP-712 domain.
 
 On first boot the device generates its secp256k1 key from the hardware RNG, stores it in NVS and logs its Ethereum address (`device address (register in the contract): 0x...`). That address is what gets registered for the box in the contract.
 
-Each anomaly/recovery is published on `cryotrace/{box_id}/anomaly` as:
+MQTT topics (`box_name` is the readable name, e.g. `box01`; `box_id` is its keccak256 hash, `0x8c4d…`, which is what the contract knows):
+
+| Topic | Direction | QoS | Content |
+|---|---|---|---|
+| `cryotrace/{box_name}/anomaly` | box → relayer | 1 | signed anomaly/recovery event (below) |
+| `cryotrace/{box_name}/telemetry` | box → broker | 0 | filtered reading every 10 s (not stored on-chain) |
+| `cryotrace/{box_name}/status` | box → broker | 1, retained | `online`; the broker sets `offline` when the box drops (last will) |
+| `cryotrace/{box_id}/batch` | relayer → box | 1, retained | batch the contract assigned to the box |
+
+Signed events go through an outbox (RAM + NVS): an event leaves it only when the broker acknowledges it (PUBACK), so events produced without coverage are sent, oldest first, when the link returns, and survive a reboot. Delivery is at-least-once; duplicates are discarded by the relayer and the contract (same EIP-712 digest). If the outbox fills up (16 events), it drops first an anomaly whose recovery is queued (the recovery alone proves the excursion), then the oldest event. Signing runs in a publisher task, apart from sampling.
+
+Each anomaly/recovery event looks like:
 
 ```json
 {"boxId":"0x8c4d…","batchId":"0x36c5…","kind":1,"anomalyType":1,

@@ -7,7 +7,7 @@ and without trusting a backend. Transactions go through the browser wallet
 
 | Tab | What it does | Wallet |
 |---|---|---|
-| **Audit** | Pick a batch ID and see its box and device, every signed event, the excursions (each anomaly paired with its recovery), and the total time outside 2–8 °C. Refreshes live. | no |
+| **Audit** | Pick a batch by name and see its box and device, every signed event, the excursions (each anomaly paired with its recovery), and the total time outside 2–8 °C. Refreshes live. | no |
 | **Registry** | Every registered box with its device key (and earlier keys, if rotated) and every batch with its box and the device keys that signed its events, with a link to its audit. Rebuilt from the contract's event log. | no |
 | **Activity** | Every contract event since the deploy (device and batch registrations, recorded events, role changes), newest first, with transaction links. | no |
 | **Verify event** | Paste the JSON a box publishes over MQTT. The browser recomputes the EIP-712 digest, recovers the signer and checks it against the box's registered device key, the batch assignment and whether the event is already on-chain. Can record the event from your own wallet: the contract accepts signed events from anyone, so this works even when every relayer is down or censoring. | only to submit |
@@ -43,7 +43,7 @@ VITE_CHAIN_ID=31337 VITE_CONTRACT_ADDRESS=0x... npm run dev
 
 ## Notes
 
-- **Names and hashes.** The contract stores `keccak256` of box and batch IDs
+- **Names and hashes.** The contract stores the ids: `keccak256` of the box and batch names
   (`"box01"` → `0x8c4d…`), as the firmware does. A hash cannot be turned back
   into its name, so the app labels hashes with the names typed in this browser
   and shows a shortened hash otherwise.

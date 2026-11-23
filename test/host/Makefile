@@ -14,13 +14,15 @@ MAIN_SRCS   := test_main.c $(SRC_DIR)/monitoring/filter.c $(SRC_DIR)/monitoring/
 SIGNED_SRCS := test_signed_event.c $(SRC_DIR)/signing/signed_event.c \
                $(SRC_DIR)/signing/event_payload.c random_host.c
 BATCH_SRCS  := test_batch_message.c $(SRC_DIR)/messaging/batch_message.c
+OUTBOX_SRCS := test_event_outbox.c $(SRC_DIR)/messaging/event_outbox.c
 HEADERS     := $(foreach d,$(SRC_DIRS),$(wildcard $(d)/*.h))
 
 .PHONY: test clean
-test: build/test_main build/test_signed_event build/test_batch_message
+test: build/test_main build/test_signed_event build/test_batch_message build/test_event_outbox
 	./build/test_main
 	./build/test_signed_event
 	./build/test_batch_message
+	./build/test_event_outbox
 
 build/test_main: $(MAIN_SRCS) $(HEADERS)
 	@mkdir -p build
@@ -37,6 +39,10 @@ build/test_signed_event: $(SIGNED_SRCS) $(HEADERS) build/libtrezor.a
 build/test_batch_message: $(BATCH_SRCS) $(HEADERS)
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined $(BATCH_SRCS) -o $@
+
+build/test_event_outbox: $(OUTBOX_SRCS) $(HEADERS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined $(OUTBOX_SRCS) -o $@
 
 clean:
 	rm -rf build

@@ -1,16 +1,19 @@
 menu "CryoTrace"
 
-    config CRYO_BOX_ID
-        string "Thermal box ID"
+    config CRYO_BOX_NAME
+        string "Thermal box name"
         default "box01"
         help
-            Used in the MQTT topic: cryotrace/{box_id}/...
+            Readable name of the box, used in its MQTT topics
+            (cryotrace/{box_name}/...). Its keccak256 hash is the boxId the
+            contract and the signed events use.
 
-    config CRYO_BATCH_ID
-        string "Initial vaccine batch ID"
+    config CRYO_BATCH_NAME
+        string "Initial batch name"
         default "batch-demo-001"
         help
-            Batch used until another one is stored on the device. The box
+            Batch used until another one is stored on the device (its
+            keccak256 hash is the batchId). The box
             carries one batch per trip and is reused for later batches; each
             new batch is set without reflashing and must be assigned to the
             box in the contract (registerBatch).
@@ -163,6 +166,28 @@ menu "CryoTrace - Network"
     config CRYO_NTP_SERVER
         string "NTP server"
         default "pool.ntp.org"
+
+endmenu
+
+menu "CryoTrace - MQTT"
+
+    config CRYO_MQTT_BROKER_URI
+        string "Broker URI"
+        default "mqtts://your-deployment.ala.us-east-1.emqxsl.com:8883"
+        help
+            mqtts:// for TLS (e.g. EMQX Cloud Serverless, port 8883; the server certificate is
+            checked against the CA bundle shipped with ESP-IDF). mqtt:// only
+            for a local test broker.
+
+    config CRYO_MQTT_USERNAME
+        string "Username"
+        default ""
+
+    config CRYO_MQTT_PASSWORD
+        string "Password"
+        default ""
+        help
+            Stored in sdkconfig (git-ignored), like the Wi-Fi password.
 
 endmenu
 

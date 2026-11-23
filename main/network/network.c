@@ -1,11 +1,13 @@
 #include "network.h"
 
+#include <sys/time.h>
 #include <time.h>
 
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
+#include "esp_timer.h"
 #include "sdkconfig.h"
 
 #include "network_link.h"
@@ -62,4 +64,15 @@ esp_err_t network_start(void)
 bool network_time_synced(void)
 {
     return time(NULL) >= MIN_EPOCH;
+}
+
+int64_t network_epoch_ms(int64_t mono_ms)
+{
+    if (!network_time_synced()) {
+        return 0;
+    }
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int64_t epoch_now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return epoch_now - (esp_timer_get_time() / 1000 - mono_ms);
 }

@@ -155,7 +155,7 @@ export function RegistryPanel() {
 
           {hasUnknownNames && (
             <p className="muted small">
-              The contract stores only the hash of each box and batch ID. Names appear for IDs typed in this browser (in
+              The contract stores only the id (hash) of each box and batch name. Names appear for those typed in this browser (in
               Audit or Manage); the others show as hashes (hover for the full value).
             </p>
           )}

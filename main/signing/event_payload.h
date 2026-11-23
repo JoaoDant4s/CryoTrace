@@ -8,7 +8,7 @@
 #include "signed_event.h"
 
 // Glue between the FSM and the signed on-chain event: field conversion and
-// the JSON payload published on cryotrace/{box_id}/anomaly.
+// the JSON payload published on cryotrace/{box_name}/anomaly.
 // Plain C (no ESP-IDF) so it can be tested on the host.
 
 // Builds the event to sign for an FSM transition. Times are epoch ms
