@@ -1,4 +1,4 @@
-"""Parsing and validation of the JSON the firmware publishes on cryotrace/{box_id}/anomaly.
+"""Parsing and validation of the JSON the firmware publishes on cryotrace/{box_name}/anomaly.
 
 The field names match the contract's ColdChainEvent struct, so a parsed event
 maps one to one onto the recordEvent() arguments. Validation here only rejects
@@ -52,7 +52,7 @@ class SignedEvent:
 
 
 def box_id_of(box_name: str) -> bytes:
-    """keccak256 of the box id string, as the firmware computes it."""
+    """Box (or batch) id: keccak256 of its name, as the firmware computes it."""
     return keccak(text=box_name)
 
 

@@ -26,11 +26,11 @@ contract), the relayer publishes it, **retained**, so a box that is off gets it
 when it connects:
 
 ```
-topic:   cryotrace/0x<keccak256(box id)>/batch
+topic:   cryotrace/<box id>/batch        (box id = 0x + keccak256 of the box name)
 payload: {"boxId": "0x…", "batchId": "0x…", "blockNumber": 12190999, "txHash": "0x…"}
 ```
 
-The topic uses the box id hash, not the name (`box01`): the contract only knows
+The topic uses the box id, not the name (`box01`): the contract only knows
 the hash, and the box computes the same hash from its own name, so the relayer
 needs no list of boxes.
 

@@ -4,7 +4,7 @@ When logistics assigns a batch to a box (BatchRegistered on the contract), the
 relayer publishes it, retained, on cryotrace/<boxId>/batch. A box that was off
 gets it as soon as it connects, and signs its next events with that batch.
 
-The topic uses the box id hash (0x + 64 hex), not the box name: the contract
+The topic uses the box id (0x + 64 hex, the keccak256 of the box name), not the name: the contract
 only knows the hash, and the box computes the same hash from its own name.
 
 Anyone with broker credentials could publish a fake batch, which would make the

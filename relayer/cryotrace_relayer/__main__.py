@@ -126,7 +126,13 @@ def main() -> None:
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect_async(env("MQTT_HOST"), int(env("MQTT_PORT", "8883")))
-    client.loop_forever(retry_first_connection=True)
+    try:
+        client.loop_forever(retry_first_connection=True)
+    except KeyboardInterrupt:
+        # Unacknowledged messages stay in the broker session and are
+        # redelivered on the next start.
+        log.info("stopping")
+        client.disconnect()
 
 
 if __name__ == "__main__":
