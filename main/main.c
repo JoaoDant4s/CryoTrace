@@ -63,7 +63,7 @@ static void publish_telemetry(float raw, float filtered, fsm_state_t state)
     snprintf(payload, sizeof(payload),
              "{\"ts\":%lld,\"temp\":%s,\"raw\":%s,\"state\":\"%s\"}",
              to_epoch_ms(now_ms()), s_filtered, s_raw, anomaly_fsm_state_name(state));
-    ESP_LOGI(TAG, "coldchain/%s/telemetry %s", CONFIG_CRYO_BOX_ID, payload);
+    ESP_LOGI(TAG, "cryotrace/%s/telemetry %s", CONFIG_CRYO_BOX_ID, payload);
 }
 
 // Signs the FSM transition as the EIP-712 event recorded by the contract.
@@ -102,7 +102,7 @@ static void publish_event(const fsm_event_t *ev)
     ESP_LOGI(TAG, "%s %s (counter %lu), hash+sign took %lld us",
              ev->type == FSM_EVT_ANOMALY ? "ANOMALY" : "RECOVERY",
              anomaly_fsm_anomaly_name(ev->anomaly), (unsigned long)counter, sign_us);
-    ESP_LOGW(TAG, "coldchain/%s/anomaly %s", CONFIG_CRYO_BOX_ID, payload);
+    ESP_LOGW(TAG, "cryotrace/%s/anomaly %s", CONFIG_CRYO_BOX_ID, payload);
 }
 
 static void init_nvs(void)

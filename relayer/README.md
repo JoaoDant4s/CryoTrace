@@ -1,6 +1,6 @@
 # CryoTrace relayer
 
-Subscribes to `coldchain/+/anomaly`, and for each event the ESP32 signed calls
+Subscribes to `cryotrace/+/anomaly`, and for each event the ESP32 signed calls
 `CryoTrace.recordEvent` on-chain, paying the gas. It holds no device key: it can
 delay or drop an event, but cannot forge or alter one — the contract checks the
 device signature.
@@ -17,6 +17,35 @@ For each message:
 Network/RPC errors are retried with backoff until one of the outcomes above.
 Messages are acknowledged to the broker only after that (persistent session,
 manual ack), so a crash mid-way makes the broker redeliver them.
+
+## Batch announcements
+
+The box has to sign each event with the batch it carries, and that changes every
+trip. When logistics assigns a batch to a box (`BatchRegistered` on the
+contract), the relayer publishes it, **retained**, so a box that is off gets it
+when it connects:
+
+```
+topic:   cryotrace/0x<keccak256(box id)>/batch
+payload: {"boxId": "0x…", "batchId": "0x…", "blockNumber": 12190999, "txHash": "0x…"}
+```
+
+The topic uses the box id hash, not the name (`box01`): the contract only knows
+the hash, and the box computes the same hash from its own name, so the relayer
+needs no list of boxes.
+
+A wrong batch on the box is costly: its events would be refused
+(`BatchNotOnBox`). So the relayer also subscribes to these topics and checks
+each message against the contract: a forged, malformed or previous-trip
+assignment is overwritten with the current one (or cleared, if the box has
+none); a real assignment newer than its last scan makes it catch up. After each
+reconnect it republishes all current assignments. Several relayers publish the
+same messages, so they do not conflict. The first line of defence is still the
+broker: allow only relayer credentials to publish on `cryotrace/+/batch`.
+
+New assignments are read every `BATCH_POLL_S` seconds (default 60, about
+0.5 M Infura credits a day); set `START_BLOCK` to the deploy block so the first
+scan does not start at block 0.
 
 ## Several relayers
 
@@ -64,3 +93,8 @@ set -a; . ./.env; set +a
   events, foreign keys, wrong batches and mismatched topics without spending gas.
   Also covers several relayers: a second relayer skips recorded events, a lost
   race counts as a duplicate, and a delayed backup records what the primary missed.
+- `tests/test_batches.py`: decisions about the retained batch topics (current,
+  previous trip, forged, newer than our scan, malformed, cleared).
+- `tests/test_batches_anvil.py`: batch announcements against the real contract:
+  latest batch per box across several log chunks, one publish per assignment,
+  repair of forged messages, catching up with a relayer that is ahead.

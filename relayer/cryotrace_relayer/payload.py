@@ -1,4 +1,4 @@
-"""Parsing and validation of the JSON the firmware publishes on coldchain/{box_id}/anomaly.
+"""Parsing and validation of the JSON the firmware publishes on cryotrace/{box_id}/anomaly.
 
 The field names match the contract's ColdChainEvent struct, so a parsed event
 maps one to one onto the recordEvent() arguments. Validation here only rejects

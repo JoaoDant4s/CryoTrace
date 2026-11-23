@@ -33,8 +33,8 @@ flowchart TB
 
     TERM["Audit<br/>query by batch"]
 
-    FW -- "coldchain/{box_id}/telemetry · QoS 0" --> BROKER
-    SIGN -- "coldchain/{box_id}/anomaly · QoS 1" --> BROKER
+    FW -- "cryotrace/{box_id}/telemetry · QoS 0" --> BROKER
+    SIGN -- "cryotrace/{box_id}/anomaly · QoS 1" --> BROKER
     BROKER -- "anomaly" --> RELAYER
     RELAYER -- "transaction" --> SC
     SC -- "read (view)" --> TERM
@@ -70,6 +70,7 @@ Dashed blocks are out of the implementation scope: the ESP32 publishes telemetry
 | FSM events signed and serialized as the MQTT payload | ✅ tested on the host |
 | Device key generated on-chip + persistent counter (NVS) | ✅ builds; still to be validated on the board |
 | MQTT publishing over TLS (HiveMQ Cloud) | ⏳ |
+| Batch announcements (relayer → box, retained MQTT) | ✅ relayer tested end to end (anvil + Mosquitto); firmware parser tested on the host, subscription comes with MQTT |
 | Python relayer | ✅ tested end to end against a local chain (anvil) |
 | Deploy and provisioning scripts (Foundry) | ✅ tested on a local chain |
 | Testnet deployment (Sepolia) | ✅ [`0xF8A3…4Dd4`](https://sepolia.etherscan.io/address/0xF8A328b314C89Ef22E3494886A00419Dcc434Dd4); box provisioning waits for the board |
@@ -94,6 +95,8 @@ main/                       ESP-IDF firmware (ESP32-S3)
     signed_event.c/.h       EIP-712 encoding and secp256k1 signing
     event_payload.c/.h      FSM event -> signed event -> MQTT JSON payload
     device_identity.c/.h    Device key and event counter in NVS
+  messaging/
+    batch_message.c/.h      Batch announcement from the relayer (topic + parsing)
   network/
     network.c/.h            Network start + SNTP
     network_wifi.c          Wi-Fi link
@@ -178,7 +181,7 @@ In menuconfig:
 
 On first boot the device generates its secp256k1 key from the hardware RNG, stores it in NVS and logs its Ethereum address (`device address (register in the contract): 0x...`). That address is what gets registered for the box in the contract.
 
-Each anomaly/recovery is published on `coldchain/{box_id}/anomaly` as:
+Each anomaly/recovery is published on `cryotrace/{box_id}/anomaly` as:
 
 ```json
 {"boxId":"0x8c4d…","batchId":"0x36c5…","kind":1,"anomalyType":1,

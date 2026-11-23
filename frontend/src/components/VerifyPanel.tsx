@@ -154,7 +154,7 @@ export function VerifyPanel({ wallet }: { wallet: Wallet | null }) {
     <section className="panel">
       <h2>Verify a signed event</h2>
       <p className="muted">
-        Paste the JSON a box publishes on <code>coldchain/&lt;box&gt;/anomaly</code>. The signature is checked here in
+        Paste the JSON a box publishes on <code>cryotrace/&lt;box&gt;/anomaly</code>. The signature is checked here in
         the browser, independently of the relayer. Change any field (say, the temperature) and the signer no longer
         matches the box.
       </p>

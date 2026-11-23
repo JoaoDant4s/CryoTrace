@@ -25,7 +25,7 @@ CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "contracts"
 # anvil's default funded account #1 (public, well-known test key)
 RELAYER_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 DEVICE_KEY = "0x" + "00" * 29 + "c0ffee"
-TOPIC = "coldchain/box01/anomaly"
+TOPIC = "cryotrace/box01/anomaly"
 
 EVENT_TYPES = {
     "ColdChainEvent": [
@@ -171,7 +171,7 @@ def test_rejects_batch_not_on_box(chain, relayer):
 def test_rejects_topic_box_mismatch(chain, relayer):
     w3, cryo = chain
     ev = _event(6)
-    result = relayer.handle("coldchain/box02/anomaly", _payload(ev, _sign(w3, cryo, ev)))
+    result = relayer.handle("cryotrace/box02/anomaly", _payload(ev, _sign(w3, cryo, ev)))
     assert result.outcome is Outcome.INVALID
 
 

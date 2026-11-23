@@ -4,7 +4,7 @@ menu "CryoTrace"
         string "Thermal box ID"
         default "box01"
         help
-            Used in the MQTT topic: coldchain/{box_id}/...
+            Used in the MQTT topic: cryotrace/{box_id}/...
 
     config CRYO_BATCH_ID
         string "Initial vaccine batch ID"

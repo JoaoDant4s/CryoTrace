@@ -28,7 +28,7 @@ class Result:
 
 def box_name_from_topic(topic: str) -> str | None:
     parts = topic.split("/")
-    if len(parts) != 3 or parts[0] != "coldchain" or parts[2] != "anomaly" or not parts[1]:
+    if len(parts) != 3 or parts[0] != "cryotrace" or parts[2] != "anomaly" or not parts[1]:
         return None
     return parts[1]
 

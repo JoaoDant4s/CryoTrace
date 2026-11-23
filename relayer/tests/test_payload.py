@@ -68,7 +68,7 @@ def test_rejects_missing_field_and_bad_json():
 
 
 def test_topic_parsing():
-    assert box_name_from_topic("coldchain/box01/anomaly") == "box01"
-    assert box_name_from_topic("coldchain/box01/telemetry") is None
-    assert box_name_from_topic("coldchain//anomaly") is None
+    assert box_name_from_topic("cryotrace/box01/anomaly") == "box01"
+    assert box_name_from_topic("cryotrace/box01/telemetry") is None
+    assert box_name_from_topic("cryotrace//anomaly") is None
     assert box_name_from_topic("other/box01/anomaly") is None

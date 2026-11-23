@@ -3,12 +3,14 @@
 import logging
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
 from web3 import Web3
 
+from .batches import BATCH_TOPIC_FILTER, BatchAnnouncer
 from .chain import DEFAULT_ABI_PATH, ChainClient, load_abi
 from .relayer import Outcome, Relayer
 
@@ -46,6 +48,17 @@ def process_with_retry(relayer: Relayer, topic: str, payload: bytes) -> None:
         log.error("%s: %s, dropped: %s", topic, result.outcome.value, result.detail)
 
 
+def run_batch_poller(announcer: BatchAnnouncer, interval_s: float) -> None:
+    """Reads new batch assignments forever; RPC errors are retried on the next tick."""
+    while True:
+        try:
+            announcer.poll()
+        except Exception as exc:
+            log.warning("batch scan failed (block %d): %s; retrying in %.0f s",
+                        announcer.next_block, exc, interval_s)
+        time.sleep(interval_s)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -57,7 +70,7 @@ def main() -> None:
         env("RELAYER_PRIVATE_KEY"),
     )
     relayer = Relayer(chain, submit_delay_s=float(env("SUBMIT_DELAY_S", "0")))
-    topic = env("MQTT_TOPIC", "coldchain/+/anomaly")
+    topic = env("MQTT_TOPIC", "cryotrace/+/anomaly")
     log.info("relayer account %s, contract %s, submit delay %.0f s", chain.account.address,
              chain.contract.address, relayer.submit_delay_s)
 
@@ -74,15 +87,40 @@ def main() -> None:
     if env("MQTT_TLS", "1") == "1":
         client.tls_set()
 
+    # Batch announcements: tell each box, over a retained topic, which batch the
+    # contract assigned to it (see batches.py).
+    announcer = None
+    if env("BATCH_ANNOUNCE", "1") == "1":
+        announcer = BatchAnnouncer(
+            chain.contract,
+            publish=lambda t, payload: client.publish(t, payload, qos=1, retain=True),
+            start_block=int(env("START_BLOCK", "0")),
+            chunk_blocks=int(env("LOG_CHUNK_BLOCKS", "50000")),
+        )
+        poll_s = float(env("BATCH_POLL_S", "60"))
+        threading.Thread(target=run_batch_poller, args=(announcer, poll_s), daemon=True,
+                         name="batch-poller").start()
+        log.info("announcing batches on %s, scanning from block %d every %.0f s",
+                 BATCH_TOPIC_FILTER, announcer.next_block, poll_s)
+
     def on_connect(client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
             log.error("MQTT connection refused: %s", reason_code)
             return
         client.subscribe(topic, qos=1)
         log.info("subscribed to %s", topic)
+        if announcer:
+            client.subscribe(BATCH_TOPIC_FILTER, qos=1)
+            announcer.republish_all()
 
     def on_message(client, userdata, msg):
-        process_with_retry(relayer, msg.topic, msg.payload)
+        if announcer and mqtt.topic_matches_sub(BATCH_TOPIC_FILTER, msg.topic):
+            try:
+                announcer.on_retained(msg.topic, msg.payload)
+            except Exception as exc:  # RPC down: checked again on the next reconnect
+                log.warning("%s: could not check the batch: %s", msg.topic, exc)
+        else:
+            process_with_retry(relayer, msg.topic, msg.payload)
         client.ack(msg.mid, msg.qos)
 
     client.on_connect = on_connect
