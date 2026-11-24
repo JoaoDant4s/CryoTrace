@@ -126,7 +126,7 @@ class BatchAnnouncer:
     """
 
     def __init__(self, contract, publish: Callable[[str, bytes], None], start_block: int = 0,
-                 chunk_blocks: int = 50_000):
+                 chunk_blocks: int = 10_000):
         self.contract = contract
         self.w3 = contract.w3
         self.publish = publish

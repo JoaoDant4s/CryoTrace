@@ -95,7 +95,7 @@ def main() -> None:
             chain.contract,
             publish=lambda t, payload: client.publish(t, payload, qos=1, retain=True),
             start_block=int(env("START_BLOCK", "0")),
-            chunk_blocks=int(env("LOG_CHUNK_BLOCKS", "50000")),
+            chunk_blocks=int(env("LOG_CHUNK_BLOCKS", "10000")),
         )
         poll_s = float(env("BATCH_POLL_S", "60"))
         threading.Thread(target=run_batch_poller, args=(announcer, poll_s), daemon=True,
